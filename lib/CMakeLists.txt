@@ -3,5 +3,8 @@
 # This file is distributed under a three-clause BSD license. For full license
 # terms please see the LICENSE file distributed with this source code.
 
+# add_subdirectory(talvos-rt)
 add_subdirectory(talvos)
-add_subdirectory(vulkan)
+if (NOT EMSCRIPTEN)
+  add_subdirectory(vulkan)
+endif()

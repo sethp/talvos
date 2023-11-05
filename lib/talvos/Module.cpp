@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
+#include <spirv-tools/libspirv.h>
 #include <spirv-tools/libspirv.hpp>
 
 #include <spirv/unified1/spirv.h>
@@ -21,6 +23,7 @@
 #include "talvos/Module.h"
 #include "talvos/Type.h"
 #include "talvos/Variable.h"
+#include "talvos/gdb.h"
 
 namespace talvos
 {
@@ -802,9 +805,9 @@ const Type *Module::getType(uint32_t Id) const
   return Types.at(Id).get();
 }
 
-std::shared_ptr<Module> Module::load(const uint32_t *Words, size_t NumWords)
+std::shared_ptr<Module> Module::load(spvtools::Context &SPVContext,
+                                     const uint32_t *Words, size_t NumWords)
 {
-  spvtools::Context SPVContext(SPV_ENV_VULKAN_1_1);
   spv_diagnostic Diagnostic = nullptr;
 
   // Validate binary.
@@ -846,26 +849,82 @@ std::shared_ptr<Module> Module::load(const std::string &FileName)
   fread(Bytes.data(), 1, NumBytes, SPVFile);
   fclose(SPVFile);
 
+  return Module::load(Bytes);
+}
+
+std::shared_ptr<Module> Module::load(const std::vector<uint8_t> &Bytes)
+{
+  spv_target_env target_env = SPV_ENV_UNIVERSAL_1_6;
+  // spv_target_env target_env = SPV_ENV_VULKAN_1_0; // TODO
+  auto NumBytes = Bytes.size();
+
   // Check for SPIR-V magic number.
   if (((uint32_t *)Bytes.data())[0] == 0x07230203)
-    return load((uint32_t *)Bytes.data(), NumBytes / 4);
+  {
+    spvtools::Context SPVContext(target_env); // TODO?
+    return load(SPVContext, (uint32_t *)Bytes.data(), NumBytes / 4);
+  }
 
   // Assume file is in textual SPIR-V format.
   // Assemble it to a SPIR-V binary in memory.
   spv_binary Binary;
   spv_diagnostic Diagnostic = nullptr;
-  spvtools::Context SPVContext(SPV_ENV_VULKAN_1_1);
-  spvTextToBinary(SPVContext.CContext(), (const char *)Bytes.data(), NumBytes,
-                  &Binary, &Diagnostic);
+
+  auto hasPrefix = [&Bytes](const char *prefix, size_t start = 0) -> bool {
+    auto Byte = Bytes.begin() + start;
+    for (; *prefix && Byte < Bytes.end(); Byte++, prefix++)
+    {
+      if (*prefix != *Byte)
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+  // TODO robust?
+  // TODO std::string that knows its length?
+  const auto SPIRV_HEADER = "; SPIR-V\n";
+  const auto VERSION_HEADER = "; Version: ";
+  if (hasPrefix(SPIRV_HEADER) &&
+      hasPrefix(VERSION_HEADER, strlen(SPIRV_HEADER)))
+  {
+    const auto N = strlen(SPIRV_HEADER) + strlen(VERSION_HEADER);
+    auto matchVersion = [&hasPrefix, N](const char *version) -> bool {
+      return hasPrefix(version, N);
+    };
+    if (matchVersion("1.0"))
+      target_env = SPV_ENV_UNIVERSAL_1_0;
+    else if (matchVersion("1.1"))
+      target_env = SPV_ENV_UNIVERSAL_1_1;
+    else if (matchVersion("1.2"))
+      target_env = SPV_ENV_UNIVERSAL_1_2;
+    else if (matchVersion("1.3"))
+      target_env = SPV_ENV_UNIVERSAL_1_3;
+    else if (matchVersion("1.4"))
+      target_env = SPV_ENV_UNIVERSAL_1_4;
+    else if (matchVersion("1.5"))
+      target_env = SPV_ENV_UNIVERSAL_1_5;
+    else if (matchVersion("1.6"))
+      target_env = SPV_ENV_UNIVERSAL_1_6;
+
+    // otherwise, go with default
+  }
+
+  spvtools::Context SPVContext(target_env);
+  auto result =
+      spvTextToBinary(SPVContext.CContext(), (const char *)Bytes.data(),
+                      NumBytes, &Binary, &Diagnostic);
   if (Diagnostic)
   {
     spvDiagnosticPrint(Diagnostic);
-    spvBinaryDestroy(Binary);
+    spvDiagnosticDestroy(Diagnostic);
+    if (result)
+      spvBinaryDestroy(Binary);
     return nullptr;
   }
 
   // Load and return Module.
-  std::shared_ptr<Module> M = load(Binary->code, Binary->wordCount);
+  std::shared_ptr<Module> M = load(SPVContext, Binary->code, Binary->wordCount);
   spvBinaryDestroy(Binary);
   return M;
 }

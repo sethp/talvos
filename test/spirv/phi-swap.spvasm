@@ -3,12 +3,13 @@
                OpExtension "SPV_KHR_storage_buffer_storage_class"
                OpExtension "SPV_KHR_variable_pointers"
                OpMemoryModel Logical GLSL450
-               OpEntryPoint GLCompute %1 "phi-swap"
+               OpEntryPoint GLCompute %1 "phi-swap" %3
                OpExecutionMode %1 LocalSize 1 1 1
           %2 = OpString "filename"
                OpDecorate %3 DescriptorSet 0
                OpDecorate %3 Binding 0
                OpDecorate %4 Block
+               OpDecorate %9 ArrayStride 4
                OpMemberDecorate %4 0 Offset 0
 
           %5 = OpTypeVoid

@@ -10,6 +10,7 @@
 #define TALVOS_DEVICE_H
 
 #include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -29,7 +30,12 @@ class Workgroup;
 class Device
 {
 public:
-  Device();
+  // /// The Device's number of "core"s
+  const uint64_t Cores;
+  // /// The Device's number of parallel SIMT lanes per "core"
+  const uint64_t Lanes;
+
+  Device(uint64_t Cores = 4, uint64_t Lanes = 8);
   ~Device();
 
   // Do not allow Device objects to be copied.

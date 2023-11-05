@@ -10,11 +10,11 @@
 #include <cassert>
 #include <cmath>
 
-#include "PipelineExecutor.h"
 #include "talvos/Commands.h"
 #include "talvos/Device.h"
 #include "talvos/Image.h"
 #include "talvos/Memory.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/RenderPass.h"
 
 namespace talvos

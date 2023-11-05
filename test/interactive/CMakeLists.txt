@@ -11,13 +11,16 @@ foreach(test
   switch
 )
   set(TEST_NAME "interactive/${test}")
+  # via https://stackoverflow.com/a/68617709
   add_test(
     NAME ${TEST_NAME}
-    COMMAND
-    ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
-    $<TARGET_FILE:talvos-cmd>
+    COMMAND ${CMAKE_COMMAND}
+    -D INPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/${test}.stdin
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/with_stdin.cmake
+    --
+    ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
+    ${TEST_WRAPPER} $<TARGET_FILE:talvos-cmd>
     ${CMAKE_CURRENT_SOURCE_DIR}/${test}.tcf
-    ${CMAKE_CURRENT_SOURCE_DIR}/${test}.stdin
   )
 
   # Enable interactive mode.

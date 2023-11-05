@@ -194,10 +194,9 @@ DUMP UINT32 result
 # CHECK: command complete
 
 # Output is slightly mangled here as the plugin interferes with DUMP output.
+# TODO not in single-threaded mode!
 # CHECK: Buffer 'result' (8 bytes):
-# CHECK:   result[0] = host memory load
-# CHECK: 28
-# CHECK:   result[1] = host memory load
-# CHECK: 92
+# CHECK:   result[0] = 28
+# CHECK:   result[1] = 92
 
 # CHECK: plugin destroyed

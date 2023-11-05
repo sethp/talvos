@@ -92,6 +92,7 @@ public:
                            const uint8_t *Data);
 
 private:
+  // const std::variant<ComputePipeline
   const ComputePipeline *ComputePL = nullptr;   ///< The compute pipeline.
   const GraphicsPipeline *GraphicsPL = nullptr; ///< The graphics pipeline.
 

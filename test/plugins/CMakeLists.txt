@@ -26,7 +26,7 @@ foreach(test
   add_test(
     NAME ${TEST_NAME}
     COMMAND
-    ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
+    ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
     $<TARGET_FILE:talvos-cmd>
     ${CMAKE_CURRENT_SOURCE_DIR}/${test}.tcf
   )
@@ -43,8 +43,8 @@ set(TEST_NAME "plugins/missing-library")
 add_test(
   NAME ${TEST_NAME}
   COMMAND
-  ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
-  $<TARGET_FILE:talvos-cmd>
+  ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
+  ${TEST_WRAPPER} $<TARGET_FILE:talvos-cmd>
   ${CMAKE_CURRENT_SOURCE_DIR}/missing-library.tcf
 )
 set_tests_properties(

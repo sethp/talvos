@@ -1,0 +1,16 @@
+# cf. https://clangd.llvm.org/config.html#compileflags
+# and https://github.com/clangd/clangd/issues/1621#issuecomment-1751771481
+---
+CompileFlags:
+  Compiler: clang++
+  Remove: [-sSTRICT]
+  # via `( CFLAGS=($(em++ -sSTRICT --cflags)); printf "%s," "${CFLAGS[@]}" )`
+  Add: [-target,wasm32-unknown-emscripten,-fignore-exceptions,-fvisibility=default,-mllvm,-combiner-global-alias-analysis=false,-mllvm,-enable-emscripten-sjlj,-mllvm,-disable-lsr,--sysroot=/home/seth/.emscripten_cache/sysroot,-Xclang,-iwithsysroot/include/fakesdl,-Xclang,-iwithsysroot/include/compat,]
+---
+# lol https://github.com/clangd/clangd/issues/1038
+CompileFlags:
+  # perfect, love this, no notes
+  Add: [
+    -I/home/seth/Code/src/github.com/talvos/talvos/wasm32/src/SPIRV-Tools/include,
+    -I/home/seth/Code/src/github.com/talvos/talvos/wasm32/src/SPIRV-Headers/include,
+  ]

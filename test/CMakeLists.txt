@@ -3,6 +3,10 @@
 # This file is distributed under a three-clause BSD license. For full license
 # terms please see the LICENSE file distributed with this source code.
 
+if(EMSCRIPTEN)
+  set(TEST_WRAPPER node)
+endif()
+
 foreach(test
   errors/device-load-invalid
   errors/device-store-invalid
@@ -56,12 +60,15 @@ foreach(test
   add_test(
     NAME ${test}
     COMMAND
-    ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
-    $<TARGET_FILE:talvos-cmd>
+    ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run-test.py
+    ${TEST_WRAPPER} $<TARGET_FILE:talvos-cmd>
     ${CMAKE_CURRENT_SOURCE_DIR}/${test}.tcf
   )
 endforeach(${test})
 
 add_subdirectory(interactive)
-add_subdirectory(plugins)
-add_subdirectory(runtime)
+
+if (NOT EMSCRIPTEN)
+  add_subdirectory(plugins)
+  add_subdirectory(runtime)
+endif()

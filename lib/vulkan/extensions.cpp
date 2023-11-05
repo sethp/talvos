@@ -10,8 +10,9 @@
 
 // List of supported instance extensions.
 const VkExtensionProperties InstanceExtensions[] = {
-    {VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-     VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_SPEC_VERSION},
+    // TODO this breaks the vulkan loader somehow
+    // {VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+    //  VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_SPEC_VERSION},
 };
 const uint32_t NumInstanceExtensions =
     sizeof(InstanceExtensions) / sizeof(VkExtensionProperties);
@@ -68,7 +69,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(
 
   // Copy extension properties to output.
   uint32_t Count = std::min(NumInstanceExtensions, *pPropertyCount);
-  memcpy(pProperties, InstanceExtensions, Count * sizeof(VkExtensionProperties));
+  memcpy(pProperties, InstanceExtensions,
+         Count * sizeof(VkExtensionProperties));
 
   if (Count < NumInstanceExtensions)
     return VK_INCOMPLETE;

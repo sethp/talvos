@@ -1,0 +1,9 @@
+{
+  "clangd.arguments": [
+    "--enable-config",
+    "--background-index",
+    "-j=16",
+    "--compile-commands-dir=build"
+  ],
+  "cSpell.words": ["cwrap", "emscripten", "SIMT", "SPIR", "talvos"]
+}

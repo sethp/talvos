@@ -143,8 +143,13 @@ struct VkImageView_T
   uint64_t ObjectAddress;
 };
 
+#define LOADER_MAGIC_NUMBER 0x10ADED010110ADEDUL
+
 struct VkInstance_T
 {
+  size_t dispatch_table_ptr; // padding
+  uint64_t magic;            // Should be LOADER_MAGIC_NUMBER
+
   VkPhysicalDevice Device;
 };
 

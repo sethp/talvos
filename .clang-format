@@ -2,6 +2,7 @@ Language:        Cpp
 # BasedOnStyle:  LLVM
 BreakBeforeBraces: Custom
 BraceWrapping:
+  AfterCaseLabel: true
   AfterClass: true
   AfterControlStatement: true
   AfterEnum: true

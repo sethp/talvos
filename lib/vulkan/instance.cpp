@@ -45,6 +45,7 @@ vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 
   *pInstance = new VkInstance_T;
   (*pInstance)->Device = Device;
+  (*pInstance)->magic = LOADER_MAGIC_NUMBER;
 
   return VK_SUCCESS;
 }

@@ -9,8 +9,8 @@
 #include <cassert>
 #include <cstring>
 
-#include "talvos/PipelineContext.h"
 #include "talvos/GraphicsPipeline.h"
+#include "talvos/PipelineContext.h"
 
 namespace talvos
 {

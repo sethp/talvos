@@ -3,6 +3,9 @@
 # This file is distributed under a three-clause BSD license. For full license
 # terms please see the LICENSE file distributed with this source code.
 
+if (EMSCRIPTEN)
+  add_link_options("-sNODERAWFS")
+endif()
 # Common runtime code and utils.
 add_library(test_runtime_common OBJECT common.cpp)
 

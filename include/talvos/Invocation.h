@@ -9,6 +9,7 @@
 #ifndef TALVOS_INVOCATION_H
 #define TALVOS_INVOCATION_H
 
+#include <memory>
 #include <vector>
 
 #include "talvos/Dim3.h"

@@ -8,10 +8,10 @@
 
 #include <spirv/unified1/spirv.h>
 
-#include "PipelineExecutor.h"
 #include "talvos/Invocation.h"
 #include "talvos/Memory.h"
 #include "talvos/Module.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/PipelineStage.h"
 #include "talvos/Type.h"
 #include "talvos/Variable.h"

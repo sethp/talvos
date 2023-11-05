@@ -9,8 +9,10 @@
 #ifndef TALVOS_MODULE_H
 #define TALVOS_MODULE_H
 
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <spirv-tools/libspirv.hpp>
 #include <string>
 #include <vector>
 
@@ -121,7 +123,12 @@ public:
 
   /// Create a new module from the supplied SPIR-V binary data.
   /// Returns nullptr on failure.
-  static std::shared_ptr<Module> load(const uint32_t *Words, size_t NumWords);
+  static std::shared_ptr<Module> load(spvtools::Context &SPVContext,
+                                      const uint32_t *Words, size_t NumWords);
+
+  /// Create a new module from the given SPIR-V binary filename.
+  /// Returns nullptr on failure.
+  static std::shared_ptr<Module> load(const std::vector<uint8_t> &Bytes);
 
   /// Create a new module from the given SPIR-V binary filename.
   /// Returns nullptr on failure.

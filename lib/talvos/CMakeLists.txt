@@ -13,7 +13,7 @@ set(CMAKE_REQUIRED_INCLUDES "${SPIRV_INCLUDE_DIR}")
 unset(SPIRV_HEADER_FOUND CACHE)
 check_include_file_cxx("spirv/unified1/spirv.h" SPIRV_HEADER_FOUND)
 if (NOT SPIRV_HEADER_FOUND)
-  message(FATAL_ERROR "SPIR-V header required, try setting SPIRV_INCLUDE_DIR.")
+  message(FATAL_ERROR "SPIR-V header required, try setting SPIRV_INCLUDE_DIR. (saw ${SPIRV_INCLUDE_DIR})")
 endif()
 
 # Check for SPIRV-Tools header
@@ -51,7 +51,7 @@ if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     list(APPEND TALVOS_OPTIONAL_LIBS readline)
   else()
     set(HAVE_READLINE 0)
-    message(WARNING "GNU readline library not found.\n"
+    message(STATUS "GNU readline library not found."
                     "The interactive debugger will not have a command history.")
   endif()
 else()
@@ -60,7 +60,7 @@ endif()
 
 # Disable exceptions for libtalvos
 if (NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+  add_compile_options("-fno-exceptions")
 endif()
 
 # Generate config.h
@@ -105,7 +105,6 @@ set(TALVOS_SOURCES
     Object.cpp
     PipelineContext.cpp
     PipelineExecutor.cpp
-    PipelineExecutor.h
     PipelineStage.cpp
     Queue.cpp
     RenderPass.cpp
@@ -115,7 +114,7 @@ set(TALVOS_SOURCES
     Utils.cpp
     Utils.h)
 
-if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
+if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" AND NOT EMSCRIPTEN)
   set(CORE_LIB_TYPE SHARED)
 endif()
 

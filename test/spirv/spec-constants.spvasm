@@ -11,6 +11,7 @@
                OpDecorate %2 DescriptorSet 0
                OpDecorate %2 Binding 0
                OpDecorate %3 Block
+               OpDecorate %14 ArrayStride 4
                OpMemberDecorate %3 0 Offset 0
                OpDecorate %4 SpecId 0
                OpDecorate %5 SpecId 1
@@ -43,6 +44,7 @@
           %1 = OpFunction %9 None %10
 
          %20 = OpLabel
+               OpSelectionMerge %22 None
                OpBranchConditional %6 %21 %22
 
          %21 = OpLabel
@@ -51,6 +53,7 @@
 
          %22 = OpLabel
          %24 = OpPhi %12 %5 %20 %23 %21
+               OpSelectionMerge %26 None
                OpBranchConditional %7 %25 %26
 
          %25 = OpLabel

@@ -11,8 +11,10 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -78,14 +80,67 @@ public:
   /// Returns true if the calling thread is a PipelineExecutor worker thread.
   bool isWorkerThread() const;
 
+  /// Begin a compute dispatch command
+  void start(const DispatchCommand &Cmd);
+
   /// Run a compute dispatch command to completion.
   void run(const DispatchCommand &Cmd);
 
   /// Run a draw command to completion.
   void run(const DrawCommandBase &Cmd);
 
+  enum StepResult : char
+  {
+    OK,
+    FINISHED
+  };
+  /// Run the CurrentCommand one "step"
+  /// StepMask is the set of "lanes" to "step", from 0-63 (one per bit)
+  StepResult step(uint64_t StepMask = -1);
+
+  /// Clean up the CurrentCommand
+  void stop();
+
   /// Signal that an error has occurred, breaking the interactive debugger.
   void signalError();
+
+  std::optional<uint64_t> PushConstantAddress;
+
+  typedef enum
+  {
+    Active,
+    Inactive,
+    AtBarrier,
+    AtBreakpoint,
+    AtAssert,
+    AtException,
+    NotLaunched, // TODO ?
+    Exited,
+  } LaneState;
+
+  // two-layer mapping:
+  // 1. work -> virtual GPU
+  // 2. virtual GPU -> physical executor (CPU)
+  // LogCoord -> PhyCoord represents the first
+  // the second is still implicit (and, currently, single-threaded)
+
+  // Lane assignments:
+  //    given a workgroup of size 16 x 1 x 1
+  //    and a device that's 4 cores by 8 lanes each
+  // then
+  //     map the 16 work units into 2 cores x 8 lanes each
+  typedef struct
+  {
+    // actually a uint6_t, if such a thing existed
+    // i.e. can only be [0, 63]
+    uint8_t Core, Lane;
+  } PhyCoord;
+
+  typedef Dim3 LogCoord;
+
+  // TODO[seth] merge these into one?
+  static std::map<PhyCoord, LaneState> Lanes; // this is a view
+  static std::map<PhyCoord, LogCoord> Assignments;
 
 private:
   /// Internal structure to hold the state of a render pipeline.
@@ -115,6 +170,8 @@ private:
   /// Worker thread entry point.
   void runWorker();
 
+  void startComputeWorker();
+  void stepComputeWorker();
   /// Worker thread entry point for compute shaders.
   void runComputeWorker();
 
@@ -172,6 +229,9 @@ private:
   /// The command currently being executed.
   const Command *CurrentCommand;
 
+  /// The pipeline context for the command currently being executed.
+  const PipelineContext *PC = nullptr;
+
   /// The pipeline stage currently being executed.
   const PipelineStage *CurrentStage;
 
@@ -227,6 +287,7 @@ private:
   /// Trigger interaction with the user (if necessary).
   void interact();
 
+public:
   /// Print the context for the current invocation.
   void printContext() const;
 
@@ -251,7 +312,21 @@ private:
   bool step(const std::vector<std::string> &Args);
   bool swtch(const std::vector<std::string> &Args);
   ///@}
+
+  bool doSwtch(const Dim3 &Target);
 };
+
+inline bool const operator==(const PipelineExecutor::PhyCoord &lhs,
+                             const PipelineExecutor::PhyCoord &rhs)
+{
+  return lhs.Core == rhs.Core && lhs.Lane == rhs.Lane;
+}
+
+inline bool const operator<(const PipelineExecutor::PhyCoord &lhs,
+                            const PipelineExecutor::PhyCoord &rhs)
+{
+  return lhs.Core < rhs.Core || (lhs.Core == rhs.Core && lhs.Lane < rhs.Lane);
+}
 
 } // namespace talvos
 

@@ -1,3 +1,26 @@
+# Talvos (wasm-experimental)
+
+Hi, Seth here, sorry for the source dump. I'm still learning my way through a whole bunch of layers at once, so things are gonna be weird for a bit.
+
+The two most important things I'm getting out of this stuff right now are:
+
+1. A relatively convenient workflow for pushing/pulling things across the browser/WASM boundary (see `./hack/build-wasm.sh`)
+2. Debugging via Chrome's DWARF extension: this implies being able to find the C++ sources at a path baked into the debug files.
+
+
+Things that I know are broken:
+
+1. Many of the tests; I changed the "step" semantic to step all SIMT lanes once (previously it was doing a single instruction for a single lane), and this had some Consequences that I haven't fully unwound.
+2. The emscripten build is more than a little weird: ctest hangs when you try and run it, and it and embeds a path to my home directory.
+3. Some unknown amount of the vulkan stuff, especially in emscripten-land. I haven't dug into it too much.
+
+Things that sure seem like they could work?
+
+1. The docker build ought to reliably produce a WASM output that's copied "elsewhere"
+2. Debugging specific tests with `./hack/debug.sh`, if you take care to avoid using the emscripten toolchain (I have a `./build/host` cmake directory for this purpose)
+
+
+
 # Talvos
 
 This project provides a SPIR-V interpreter and Vulkan device emulator, with the

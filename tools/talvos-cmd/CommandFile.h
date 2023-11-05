@@ -6,14 +6,21 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <optional>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "talvos/Commands.h"
+#include "talvos/ComputePipeline.h"
+#include "talvos/Device.h"
 #include "talvos/PipelineContext.h"
 #include "talvos/PipelineStage.h"
 
 namespace talvos
 {
-class Device;
 class EntryPoint;
 class Module;
 } // namespace talvos
@@ -21,16 +28,25 @@ class Module;
 class CommandFile
 {
 public:
+  enum Mode
+  {
+    RUN,
+    DEBUG
+  };
+
+  CommandFile(const char *module, std::istream &CmdStream);
   CommandFile(std::istream &Stream);
   ~CommandFile();
-  bool run();
+  bool run(Mode mode = RUN);
+
+  talvos::Device *Device = new talvos::Device();
 
 private:
   template <typename T> T get(const char *ParseAction);
 
   void parseBuffer();
   void parseDescriptorSet();
-  void parseDispatch();
+  void parseDispatch(Mode);
   void parseDump();
   void parseEndLoop();
   void parseEntry();
@@ -45,7 +61,7 @@ private:
   template <typename T> void specialize(uint32_t SpecId);
 
   std::istream &Stream;
-  talvos::Device *Device;
+  bool Interactive = false;
   std::shared_ptr<talvos::Module> Module;
   const talvos::EntryPoint *Entry;
   std::map<std::string, std::pair<uint64_t, uint64_t>> Buffers;
@@ -53,6 +69,11 @@ private:
   talvos::DescriptorSetMap DescriptorSets;
   std::vector<std::pair<size_t, std::streampos>> Loops;
 
-  size_t CurrentLine;
+  size_t CurrentLine = 1;
   std::string CurrentParseAction;
+
+public:
+  std::optional<talvos::DispatchCommand> CurrentDispatch;
+  std::optional<talvos::ComputePipeline> CurrentPipeline;
+  talvos::PipelineContext PC;
 };

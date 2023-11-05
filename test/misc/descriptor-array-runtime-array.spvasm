@@ -1,3 +1,5 @@
+; SPIR-V
+; Version: 1.2
                OpCapability Shader
                OpExtension "SPV_KHR_storage_buffer_storage_class"
                OpMemoryModel Logical GLSL450

@@ -9,9 +9,16 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <condition_variable> // for condition_variable
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <mutex> // for mutex, unique_lock, lock_guard
 #include <sstream>
+#include <stdint.h> // for uint64_t, uint32_t, uint8_t
+#include <string>   // for operator<<, allocator, getline
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 #if defined(_WIN32) && !defined(__MINGW32__)
 #include <windows.h>
@@ -21,20 +28,22 @@
 #include <dlfcn.h>
 #endif
 
-#include "PipelineExecutor.h"
 #include "Utils.h"
-#include "talvos/Commands.h"
-#include "talvos/ComputePipeline.h"
 #include "talvos/Device.h"
+#include "talvos/Dim3.h"
 #include "talvos/EntryPoint.h"
-#include "talvos/Function.h"
 #include "talvos/Instruction.h"
 #include "talvos/Invocation.h"
 #include "talvos/Memory.h"
-#include "talvos/Module.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/PipelineStage.h"
 #include "talvos/Plugin.h"
 #include "talvos/Workgroup.h"
+
+namespace talvos
+{
+class Command;
+}
 
 namespace talvos
 {
@@ -45,7 +54,7 @@ typedef void (*DestroyPluginFunc)(Plugin *);
 // Counter for the number of errors reported.
 static std::atomic<size_t> NumErrors;
 
-Device::Device()
+Device::Device(uint64_t Cores, uint64_t Lanes) : Cores(Cores), Lanes(Lanes)
 {
   GlobalMemory = new Memory(*this, MemoryScope::Device);
 

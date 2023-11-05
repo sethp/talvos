@@ -7,14 +7,18 @@
 /// This file defines the PipelineExecutor class.
 
 #include "config.h"
+#include "talvos/Dim3.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 #if defined(_WIN32) && !defined(__MINGW32__)
@@ -36,7 +40,6 @@
 
 #include <spirv/unified1/spirv.h>
 
-#include "PipelineExecutor.h"
 #include "Utils.h"
 #include "talvos/Commands.h"
 #include "talvos/ComputePipeline.h"
@@ -48,6 +51,7 @@
 #include "talvos/Invocation.h"
 #include "talvos/Memory.h"
 #include "talvos/Module.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/PipelineStage.h"
 #include "talvos/RenderPass.h"
 #include "talvos/Type.h"
@@ -59,6 +63,18 @@
 
 namespace talvos
 {
+
+using LaneState = PipelineExecutor::LaneState;
+using PhyCoord = PipelineExecutor::PhyCoord;
+using LogCoord = PipelineExecutor::LogCoord;
+
+std::map<PhyCoord, LaneState> PipelineExecutor::Lanes;
+std::map<PhyCoord, LogCoord> PipelineExecutor::Assignments;
+
+static thread_local uint64_t ActiveLaneMask;
+
+// static thread_local uint64_t ActiveGroupMask;
+// static uint64_t InactiveLaneMask;
 
 /// Variables for worker thread state.
 static thread_local bool IsWorkerThread = false;
@@ -115,9 +131,9 @@ PipelineExecutor::PipelineExecutor(PipelineExecutorKey Key, Device &Dev)
 
   // Get number of worker threads to launch.
   NumThreads = 1;
-  if (!Interactive && Dev.isThreadSafe())
-    NumThreads = (uint32_t)getEnvUInt("TALVOS_NUM_WORKERS",
-                                      std::thread::hardware_concurrency());
+  // if (!Interactive && Dev.isThreadSafe())
+  //   NumThreads = (uint32_t)getEnvUInt("TALVOS_NUM_WORKERS",
+  //                                     std::thread::hardware_concurrency());
 }
 
 PipelineExecutor::~PipelineExecutor()
@@ -129,8 +145,8 @@ PipelineExecutor::~PipelineExecutor()
   WorkerMutex.unlock();
 
   // Wait for workers to complete.
-  for (auto &WT : WorkerThreads)
-    WT.join();
+  // for (auto &WT : WorkerThreads)
+  //   WT.join();
 }
 
 Workgroup *PipelineExecutor::createWorkgroup(Dim3 GroupId) const
@@ -215,25 +231,25 @@ const Workgroup *PipelineExecutor::getCurrentWorkgroup() const
 
 bool PipelineExecutor::isWorkerThread() const { return IsWorkerThread; }
 
-void PipelineExecutor::run(const talvos::DispatchCommand &Cmd)
+void PipelineExecutor::start(const talvos::DispatchCommand &Cmd)
 {
   assert(CurrentCommand == nullptr);
   CurrentCommand = &Cmd;
+  PC = &Cmd.getPipelineContext();
 
-  const PipelineContext &PC = Cmd.getPipelineContext();
-  const ComputePipeline *PL = PC.getComputePipeline();
+  const ComputePipeline *PL = PC->getComputePipeline();
   assert(PL != nullptr);
   CurrentStage = PL->getStage();
 
   // Allocate and initialize push constant data.
   Memory &GlobalMem = Dev.getGlobalMemory();
-  uint64_t PushConstantAddress =
+  PushConstantAddress =
       GlobalMem.allocate(PipelineContext::PUSH_CONSTANT_MEM_SIZE);
-  GlobalMem.store(PushConstantAddress, PipelineContext::PUSH_CONSTANT_MEM_SIZE,
-                  PC.getPushConstantData());
+  GlobalMem.store(*PushConstantAddress, PipelineContext::PUSH_CONSTANT_MEM_SIZE,
+                  PC->getPushConstantData());
 
   Objects = CurrentStage->getObjects();
-  initializeVariables(PC.getComputeDescriptors(), PushConstantAddress);
+  initializeVariables(PC->getComputeDescriptors(), *PushConstantAddress);
 
   assert(PendingGroups.empty());
   assert(RunningGroups.empty());
@@ -241,22 +257,62 @@ void PipelineExecutor::run(const talvos::DispatchCommand &Cmd)
   Continue = false;
   // TODO: Print info about current command (entry name, dispatch size, etc).
 
+  assert(Dev.Cores * Dev.Lanes < 64 && "not step-able with a single mask");
+  for (uint8_t Core = 0; Core < Dev.Cores; Core++)
+    for (uint8_t Lane = 0; Lane < Dev.Lanes; Lane++)
+      Lanes[PhyCoord{Core, Lane}] = LaneState::NotLaunched;
+
+  Assignments.clear();
+  uint8_t NextCore = 0, NextLane = 0;
+
   // Build list of pending group IDs.
   Dim3 BaseGroup = Cmd.getBaseGroup();
   for (uint32_t GZ = 0; GZ < Cmd.getNumGroups().Z; GZ++)
     for (uint32_t GY = 0; GY < Cmd.getNumGroups().Y; GY++)
       for (uint32_t GX = 0; GX < Cmd.getNumGroups().X; GX++)
+      {
         PendingGroups.push_back(
             {BaseGroup.X + GX, BaseGroup.Y + GY, BaseGroup.Z + GZ});
 
+        Assignments[PhyCoord{.Core = NextCore, .Lane = NextLane++}] = {
+            BaseGroup.X + GX, BaseGroup.Y + GY, BaseGroup.Z + GZ};
+
+        if (NextLane >= Dev.Lanes)
+          NextCore++, NextLane = 0;
+
+        assert(NextCore < Dev.Cores && NextCore < 64 && NextLane < 64 &&
+               "tiny scheduler ran out of numbers");
+      }
+
   // Run worker threads to process groups.
   NextWorkIndex = 0;
-  doWork([&]() { runComputeWorker(); });
 
-  finalizeVariables(PC.getComputeDescriptors());
-  GlobalMem.release(PushConstantAddress);
+  // TODO this messes with thread locals, which works b/c we're single threaded,
+  // but....
+  startComputeWorker();
+}
+
+void PipelineExecutor::run(const talvos::DispatchCommand &Cmd)
+{
+  start(Cmd);
+  doWork([&]() { runComputeWorker(); });
+  stop();
+}
+
+void PipelineExecutor::stop()
+{
+  assert(CurrentCommand != nullptr);
+  assert(PC != nullptr);
+
+  Memory &GlobalMem = Dev.getGlobalMemory();
+  finalizeVariables(PC->getComputeDescriptors());
+  // finalizeVariables(PC->getGraphicsDescriptors()); // TODO ?
+  GlobalMem.release(*PushConstantAddress);
+  PushConstantAddress.reset();
 
   PendingGroups.clear();
+  CurrentStage = nullptr;
+  PC = nullptr;
   CurrentCommand = nullptr;
 }
 
@@ -264,11 +320,11 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
 {
   assert(CurrentCommand == nullptr);
   CurrentCommand = &Cmd;
+  PC = &Cmd.getPipelineContext();
 
   Continue = false;
 
-  const PipelineContext &PC = Cmd.getPipelineContext();
-  const GraphicsPipeline *PL = PC.getGraphicsPipeline();
+  const GraphicsPipeline *PL = PC->getGraphicsPipeline();
   assert(PL != nullptr);
 
   // Get selected viewport.
@@ -278,10 +334,10 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
 
   // Allocate and initialize push constant data.
   Memory &GlobalMem = Dev.getGlobalMemory();
-  uint64_t PushConstantAddress =
+  PushConstantAddress =
       GlobalMem.allocate(PipelineContext::PUSH_CONSTANT_MEM_SIZE);
-  GlobalMem.store(PushConstantAddress, PipelineContext::PUSH_CONSTANT_MEM_SIZE,
-                  PC.getPushConstantData());
+  GlobalMem.store(*PushConstantAddress, PipelineContext::PUSH_CONSTANT_MEM_SIZE,
+                  PC->getPushConstantData());
 
   // Set up vertex shader stage pipeline memories.
   RenderPipelineState State;
@@ -295,13 +351,13 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
     // Prepare vertex stage objects.
     CurrentStage = PL->getVertexStage();
     Objects = CurrentStage->getObjects();
-    initializeVariables(PC.getGraphicsDescriptors(), PushConstantAddress);
+    initializeVariables(PC->getGraphicsDescriptors(), *PushConstantAddress);
 
     // Run worker threads to process vertices.
     NextWorkIndex = 0;
     doWork([&]() { runVertexWorker(&State, InstanceIndex); });
 
-    finalizeVariables(PC.getGraphicsDescriptors());
+    finalizeVariables(PC->getGraphicsDescriptors());
 
     // Discard primitves before rasterization if requested.
     if (PL->getRasterizationState().rasterizerDiscardEnable)
@@ -311,7 +367,7 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
     CurrentStage = PL->getFragmentStage();
     assert(CurrentStage && "rendering without fragment shader not implemented");
     Objects = CurrentStage->getObjects();
-    initializeVariables(PC.getGraphicsDescriptors(), PushConstantAddress);
+    initializeVariables(PC->getGraphicsDescriptors(), *PushConstantAddress);
 
     // TODO: Handle other topologies
     VkPrimitiveTopology Topology = PL->getTopology();
@@ -366,25 +422,169 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
       abort();
     }
 
-    finalizeVariables(PC.getGraphicsDescriptors());
+    finalizeVariables(PC->getGraphicsDescriptors());
   }
 
-  GlobalMem.release(PushConstantAddress);
+  stop();
+}
 
-  CurrentStage = nullptr;
-  CurrentCommand = nullptr;
+// TODO the other kind of pipeline/worker deal (graphics)
+PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
+{
+  // TODO use `std::find_if`? and/or a vec<pair> instead of a map?
+  for (const auto &[phyCoord, logCoord] : Assignments)
+  {
+    if (StepMask & (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane)))
+    {
+      doSwtch(logCoord);
+      if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
+        continue;
+      stepComputeWorker();
+
+#define TODO false
+      if (!CurrentInvocation ||
+          CurrentInvocation->getState() == Invocation::FINISHED)
+        Lanes[phyCoord] = LaneState::Exited;
+      else if (TODO)
+        Lanes[phyCoord] = LaneState::AtBreakpoint;
+      else if (TODO)
+        Lanes[phyCoord] = LaneState::AtAssert;
+      else if (TODO)
+        Lanes[phyCoord] = LaneState::AtException;
+      else if (CurrentInvocation->getState() == Invocation::BARRIER)
+        Lanes[phyCoord] = LaneState::AtBarrier;
+      else if (CurrentInvocation->getState() == Invocation::READY)
+        // TODO why does this come back after we try to step the finished one
+        // again?
+        Lanes[phyCoord] = LaneState::Active;
+      else
+        __builtin_unreachable();
+#undef TODO
+    }
+    else
+      Lanes[phyCoord] = LaneState::Inactive; // TODO is this what inactive is?
+  }
+
+  // TODO tie this to the states map instead?
+  if (CurrentInvocation == nullptr && CurrentGroup == nullptr &&
+      RunningGroups.empty() && NextWorkIndex >= PendingGroups.size())
+    return FINISHED;
+
+  assert(CurrentInvocation);
+  assert(CurrentGroup);
+  return OK;
+}
+
+void PipelineExecutor::stepComputeWorker()
+{
+  while (true)
+  {
+    // Step each invocation in group until it hits a barrier or completes.
+    if (CurrentInvocation != nullptr &&
+        CurrentInvocation->getState() == Invocation::READY)
+    {
+      CurrentInvocation->step();
+      return;
+    }
+
+    if (CurrentGroup == nullptr)
+    {
+      // Get next group to run.
+      // Take from running pool first, then pending pool.
+      // A pool of running groups is maintained to allow the current group to be
+      // suspended and changed via the interactive debugger interface.
+      if (!RunningGroups.empty())
+      {
+        assert(NumThreads == 1);
+        // TODO[seth] is this an immediately dangling reference?
+        CurrentGroup = RunningGroups.back();
+        RunningGroups.pop_back();
+      }
+      else if (NextWorkIndex < PendingGroups.size())
+      {
+        size_t GroupIndex = NextWorkIndex++;
+        if (GroupIndex >= PendingGroups.size())
+          return;
+        CurrentGroup = createWorkgroup(PendingGroups[GroupIndex]);
+        Dev.reportWorkgroupBegin(CurrentGroup);
+      }
+      else
+      {
+        // All groups are finished.
+        return;
+      }
+    }
+
+    const Workgroup::WorkItemList &WorkItems = CurrentGroup->getWorkItems();
+
+    {
+      // Get the next invocation in the current group in the READY state.
+      // TODO: Could move some of this logic into the Workgroup class?
+      auto I =
+          std::find_if(WorkItems.begin(), WorkItems.end(), [](const auto &I) {
+            return I->getState() == Invocation::READY;
+          });
+      if (I < WorkItems.end())
+      {
+        CurrentInvocation = I->get();
+        return;
+      }
+      CurrentInvocation = nullptr;
+    }
+
+    {
+      // Check for barriers.
+      // TODO: Move logic for barrier handling into Workgroup class?
+      size_t BarrierCount =
+          std::count_if(WorkItems.begin(), WorkItems.end(), [](const auto &I) {
+            return I->getState() == Invocation::BARRIER;
+          });
+      if (BarrierCount > 0)
+      {
+        // All invocations in the group must hit the barrier.
+        // TODO: Ensure they hit the *same* barrier?
+        // TODO: Allow for other execution scopes.
+        if (BarrierCount != WorkItems.size())
+        {
+          // TODO: Better error message.
+          // TODO: Try to carry on?
+          std::cerr << "Barrier not reached by every invocation." << std::endl;
+          abort();
+        }
+
+        // Clear the barrier.
+        for (auto &WI : WorkItems)
+          WI->clearBarrier();
+        Dev.reportWorkgroupBarrier(CurrentGroup);
+        continue;
+      }
+    }
+
+    // All invocations must have completed - this group is done.
+    Dev.reportWorkgroupComplete(CurrentGroup);
+    delete CurrentGroup;
+    CurrentGroup = nullptr;
+  }
+}
+
+void PipelineExecutor::startComputeWorker()
+{
+  IsWorkerThread = true;
+  CurrentGroup = nullptr;
+  CurrentInvocation = nullptr;
 }
 
 void PipelineExecutor::runComputeWorker()
 {
-  IsWorkerThread = true;
-  CurrentInvocation = nullptr;
-
   // Loop until all groups are finished.
   // A pool of running groups is maintained to allow the current group to be
   // suspended and changed via the interactive debugger interface.
-  while (true)
+  while (step(/*todo serializing masks? */) != FINISHED)
   {
+    interact();
+
+    continue;
+
     // Get next group to run.
     // Take from running pool first, then pending pool.
     if (!RunningGroups.empty())
@@ -985,25 +1185,29 @@ void PipelineExecutor::runWorker()
 void PipelineExecutor::doWork(std::function<void()> Task)
 {
   // Create worker threads if necessary.
-  if (WorkerThreads.empty())
-  {
-    for (unsigned i = 0; i < NumThreads; i++)
-      WorkerThreads.push_back(std::thread(&PipelineExecutor::runWorker, this));
-  }
+  // if (WorkerThreads.empty())
+  // {
+  //   for (unsigned i = 0; i < NumThreads; i++)
+  //     WorkerThreads.push_back(std::thread(&PipelineExecutor::runWorker,
+  //     this));
+  // }
 
   // Signal worker threads to perform task.
-  NumWorkersFinished = 0;
+  // NumWorkersFinished = 0;
   CurrentTask = Task;
-  CurrentTaskID++;
-  WorkerMutex.lock();
-  WorkerSignal.notify_all();
-  WorkerMutex.unlock();
+  // CurrentTaskID++;
+  // WorkerMutex.lock();
+  // WorkerSignal.notify_all();
+  // WorkerMutex.unlock();
+
+  CurrentTask();
 
   // Wait for worker threads to finish task.
-  {
-    std::unique_lock<std::mutex> Lock(WorkerMutex);
-    MasterSignal.wait(Lock, [&]() { return NumWorkersFinished == NumThreads; });
-  }
+  // {
+  //   std::unique_lock<std::mutex> Lock(WorkerMutex);
+  //   MasterSignal.wait(Lock, [&]() { return NumWorkersFinished == NumThreads;
+  //   });
+  // }
 
   CurrentTask = std::function<void()>();
 }
@@ -1584,6 +1788,9 @@ void PipelineExecutor::signalError()
   // Drop to interactive prompt.
   Continue = false;
   interact();
+
+  // TODO?
+  // abort();
 }
 
 Vec4 PipelineExecutor::getPosition(const VertexOutput &Out)
@@ -1741,7 +1948,7 @@ void PipelineExecutor::loadVertexInput(const PipelineContext &PC,
 
 void PipelineExecutor::interact()
 {
-  if (!Interactive)
+  if (!Interactive || !CurrentInvocation)
     return;
 
   // Check if a breakpoint has been reached.
@@ -2082,10 +2289,33 @@ bool PipelineExecutor::swtch(const std::vector<std::string> &Args)
     return false;
   }
 
+  if (!doSwtch(Id))
+  {
+    std::cerr << "Workgroup containing invocation has already finished."
+              << std::endl;
+    return false;
+  }
+
+  std::cout << "Switched to invocation with global ID " << Id << std::endl;
+
+  printContext();
+
+  return false;
+}
+
+bool PipelineExecutor::doSwtch(const Dim3 &Id)
+{
+  Dim3 GroupSize = CurrentStage->getGroupSize();
+
+  // Check global index is within global bounds.
+  Dim3 NumGroups = ((const DispatchCommand *)CurrentCommand)->getNumGroups();
+  assert(Id.X < GroupSize.X * NumGroups.X && Id.Y < GroupSize.Y * NumGroups.Y &&
+         Id.Z < GroupSize.Z * NumGroups.Z);
+
   // Find workgroup with target group ID.
   Dim3 GroupId(Id.X / GroupSize.X, Id.Y / GroupSize.Y, Id.Z / GroupSize.Z);
   Workgroup *Group = nullptr;
-  if (GroupId == CurrentGroup->getGroupId())
+  if (CurrentGroup && GroupId == CurrentGroup->getGroupId())
   {
     // Already running - nothing to do.
     Group = CurrentGroup;
@@ -2117,18 +2347,18 @@ bool PipelineExecutor::swtch(const std::vector<std::string> &Args)
     }
   }
 
-  if (!Group)
-  {
-    std::cerr << "Workgroup containing invocation has already finished."
-              << std::endl;
-    return false;
-  }
-
   // Switch to target group.
   if (Group != CurrentGroup)
   {
-    RunningGroups.push_back(CurrentGroup);
+    if (CurrentGroup)
+      RunningGroups.push_back(CurrentGroup);
     CurrentGroup = Group;
+  }
+
+  if (!CurrentGroup)
+  {
+    CurrentInvocation = nullptr;
+    return false;
   }
 
   // Switch to target invocation.
@@ -2137,11 +2367,7 @@ bool PipelineExecutor::swtch(const std::vector<std::string> &Args)
       LocalId.X + (LocalId.Y + LocalId.Z * GroupSize.Y) * GroupSize.X;
   CurrentInvocation = CurrentGroup->getWorkItems()[LocalIndex].get();
 
-  std::cout << "Switched to invocation with global ID " << Id << std::endl;
-
-  printContext();
-
-  return false;
+  return true;
 }
 
 } // namespace talvos

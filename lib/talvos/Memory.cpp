@@ -201,7 +201,7 @@ uint32_t Memory::atomicCmpXchg(uint64_t Address, uint32_t Scope,
 
 void Memory::dump() const
 {
-  for (size_t Id = 1; Id < Buffers.size(); Id++)
+  for (uint64_t Id = 1; Id < Buffers.size(); Id++)
   {
     if (Buffers[Id].Data)
       dump(Id << OFFSET_BITS);

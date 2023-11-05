@@ -3,14 +3,26 @@
 // This file is distributed under a three-clause BSD license. For full license
 // terms please see the LICENSE file distributed with this source code.
 
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "CommandFile.h"
 #include "talvos/Commands.h"
 #include "talvos/ComputePipeline.h"
 #include "talvos/Device.h"
+#include "talvos/Dim3.h"
 #include "talvos/Memory.h"
 #include "talvos/Module.h"
+#include "talvos/Object.h"
+#include "talvos/PipelineContext.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/Type.h"
 
 using namespace std;
@@ -22,11 +34,17 @@ class NotRecognizedException : exception
 {
 };
 
-CommandFile::CommandFile(std::istream &Stream) : Stream(Stream)
+CommandFile::CommandFile(const char *file, std::istream &CmdStream)
+    : Stream(CmdStream)
 {
-  Device = new talvos::Device;
-  CurrentLine = 1;
+  std::vector<uint8_t> ModuleText((const uint8_t *)file,
+                                  (const uint8_t *)file + strlen(file));
+  // assert(*(file + strlen(file)) == '\0');
+  // assert(ModuleText.size() == strlen(file));
+  Module = talvos::Module::load(ModuleText);
 }
+
+CommandFile::CommandFile(std::istream &Stream) : Stream(Stream) {}
 
 CommandFile::~CommandFile() { delete Device; }
 
@@ -203,7 +221,7 @@ void CommandFile::parseDescriptorSet()
                                                   Buffers[Name].second};
 }
 
-void CommandFile::parseDispatch()
+void CommandFile::parseDispatch(Mode mode)
 {
   if (!Module)
     throw "DISPATCH reached with no prior MODULE command";
@@ -217,11 +235,26 @@ void CommandFile::parseDispatch()
 
   talvos::PipelineStage *Stage =
       new talvos::PipelineStage(*Device, Module, Entry, SpecConstMap);
-  talvos::ComputePipeline Pipeline(Stage);
-  talvos::PipelineContext PC;
-  PC.bindComputePipeline(&Pipeline);
+
+  CurrentPipeline.emplace(Stage);
+  PC.clear();
+  PC.bindComputePipeline(&*CurrentPipeline);
   PC.bindComputeDescriptors(DescriptorSets);
-  talvos::DispatchCommand(PC, {0, 0, 0}, GroupCount).run(*Device);
+
+  CurrentDispatch = talvos::DispatchCommand(PC, {0, 0, 0}, GroupCount);
+  switch (mode)
+  {
+  case RUN:
+    CurrentDispatch->run(*Device);
+    CurrentDispatch.reset();
+    break;
+  case DEBUG:
+    Device->reportCommandBegin(&*CurrentDispatch);
+    Device->getPipelineExecutor().start(*CurrentDispatch);
+    break;
+  default:
+    throw std::runtime_error("unrecognized mode");
+  }
 }
 
 void CommandFile::parseDump()
@@ -420,7 +453,7 @@ template <typename T> void CommandFile::specialize(uint32_t SpecId)
   SpecConstMap[SpecId] = talvos::Object(Ty, get<T>("specialization value"));
 }
 
-bool CommandFile::run()
+bool CommandFile::run(Mode mode)
 {
   try
   {
@@ -433,7 +466,11 @@ bool CommandFile::run()
       else if (Command == "DESCRIPTOR_SET")
         parseDescriptorSet();
       else if (Command == "DISPATCH")
-        parseDispatch();
+      {
+        parseDispatch(mode);
+        if (mode == DEBUG)
+          return false;
+      }
       else if (Command == "DUMP")
         parseDump();
       else if (Command == "ENDLOOP")
