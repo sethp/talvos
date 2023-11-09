@@ -19,7 +19,8 @@ class Function;
 class Variable;
 
 /// A list of module scope variables.
-typedef std::vector<const Variable *> VariableList;
+typedef std::vector<const Variable *>
+    VariableList; // TODO[seth]: no dtor... does this leak?
 
 /// This class represents a shader entry point.
 class EntryPoint
@@ -46,21 +47,21 @@ public:
   /// Returns the input/output variables used by this entry point.
   const VariableList &getVariables() const { return Variables; }
 
-private:
+public:
   /// The SPIR-V result ID.
-  uint32_t Id;
+  const uint32_t Id;
 
   /// The name of the entry point.
-  std::string Name;
+  const std::string Name;
 
   /// The shader execution mode.
-  uint32_t ExecutionModel;
+  const uint32_t ExecutionModel;
 
   /// The function that will be used.
   const Function *Func;
 
   /// List of input/output variables used.
-  VariableList Variables;
+  const VariableList Variables;
 };
 
 } // namespace talvos

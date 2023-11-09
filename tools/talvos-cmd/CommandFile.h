@@ -23,6 +23,11 @@ namespace talvos
 {
 class EntryPoint;
 class Module;
+extern "C" struct Params
+{
+  // used to populate Entry at dispatch time, if set
+  const char EntryName[64] = {'\0'};
+};
 } // namespace talvos
 
 class CommandFile
@@ -62,8 +67,6 @@ private:
 
   std::istream &Stream;
   bool Interactive = false;
-  std::shared_ptr<talvos::Module> Module;
-  const talvos::EntryPoint *Entry;
   std::map<std::string, std::pair<uint64_t, uint64_t>> Buffers;
   talvos::SpecConstantMap SpecConstMap;
   talvos::DescriptorSetMap DescriptorSets;
@@ -73,7 +76,11 @@ private:
   std::string CurrentParseAction;
 
 public:
+  const talvos::EntryPoint *Entry = nullptr;
+  std::shared_ptr<talvos::Module> Module;
   std::optional<talvos::DispatchCommand> CurrentDispatch;
   std::optional<talvos::ComputePipeline> CurrentPipeline;
   talvos::PipelineContext PC;
+
+  struct talvos::Params Params;
 };

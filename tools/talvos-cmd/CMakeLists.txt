@@ -58,6 +58,9 @@ if (EMSCRIPTEN)
         stringToUTF8OnStack
         writeArrayToMemory
 
+        stringToUTF8Array
+        UTF8ArrayToString
+
         wasmMemory
     )
 

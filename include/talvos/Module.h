@@ -134,7 +134,7 @@ public:
   /// Returns nullptr on failure.
   static std::shared_ptr<Module> load(const std::string &FileName);
 
-private:
+public:
   /// Map from SPIR-V result ID to talvos::Type.
   typedef std::map<uint32_t, std::unique_ptr<Type>> TypeMap;
 

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <emscripten/em_asm.h>
+#include <emscripten/em_js.h>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -14,6 +16,7 @@
 #include <vector>
 
 #include "CommandFile.h"
+#include "talvos/EntryPoint.h"
 #include "talvos/Module.h"
 #include "talvos/PipelineExecutor.h"
 
@@ -190,6 +193,135 @@ public:
   }
 };
 
+// EM_JS(void, hi, (), {alert('sup')});
+// --->
+// extern "C"
+// {
+//   void hi() __attribute__((import_module("env"), import_name("hi")));
+//   __attribute__((used)) static void *__em_js_ref_hi = (void *)&hi;
+//   __attribute__((used))
+//   __attribute__((section("em_js"), aligned(1))) char __em_js__hi[] =
+//       "()"
+//       "<::>"
+//       "{alert('sup')}";
+// };
+
+static_assert(sizeof(talvos::Module) == 104);
+
+// we should expect these to be Very Not Stable as the compiler/class change,
+// right? But, if we can induce clang to author the JS wrapper for us,
+// with these constraints in mind, will that then be stable?
+//
+// hm, related:
+static_assert(offsetof(talvos::Module, EntryPoints) == 40);
+static_assert(sizeof(talvos::Module::EntryPoints) == 12);
+static_assert(sizeof(talvos::EntryPoint) == 36);
+static_assert(offsetof(talvos::EntryPoint, Name) == 4);
+
+// just some string things
+static_assert(sizeof(std::string) == 12);
+static_assert(sizeof(std::basic_string<char>) == sizeof(std::string));
+static_assert(_LIBCPP_ABI_VERSION == 2);
+#ifndef _LIBCPP_ABI_ALTERNATE_STRING_LAYOUT
+#error "oh no"
+#endif
+static_assert(sizeof(std::string::pointer) == 4);
+static_assert(sizeof(std::string::size_type) == 4);
+
+namespace
+{
+using pointer = std::string::pointer;
+using size_type = std::string::size_type;
+using value_type = char;
+
+struct __long
+{
+  pointer data;
+  size_type size;
+  union
+  {
+    struct
+    {
+      size_type cap : sizeof(size_type) * CHAR_BIT - 1;
+      size_type __is_long_ : 1;
+    };
+    size_type bits;
+  };
+};
+
+enum
+{
+  __min_cap = (sizeof(__long) - 1) / sizeof(value_type) > 2
+                  ? (sizeof(__long) - 1) / sizeof(value_type)
+                  : 2
+};
+
+struct __short
+{
+  value_type data[__min_cap];
+  unsigned char __padding_[sizeof(value_type) - 1];
+  union
+  {
+    struct
+    {
+      unsigned char size : 7, __is_long_ : 1;
+    };
+    unsigned char bits;
+  };
+};
+
+static_assert(offsetof(__long, data) == 0);
+static_assert(offsetof(__long, size) == 4);
+static_assert(offsetof(__long, bits) == 8);
+
+static_assert(__min_cap == 11);
+static_assert(offsetof(__short, data) == 0);
+static_assert(offsetof(__short, bits) == 11);
+// can't do this with static_assert (i.e. constexpr), because we're switching
+// active members yes, it's possible that the thing wasn't fully initialized,
+// but :shrug:
+static int __assert_bits = [] {
+  // make it static so the compiler still has to write down the bit pattern
+  // jerk.
+  static __long L = {.cap = 0x0, .__is_long_ = true};
+  assert(L.bits == 0x8000'0000);
+
+  static __short S = {.size = 0x0, .__is_long_ = true};
+  assert(S.bits == 0x80);
+
+  // something something little endian so the msb of the 11th byte is
+  // `__is_long_` in both cases?
+
+  return 0;
+}();
+
+// NB this'll be all different on a 64-bit system
+static int __assert_sso = [] {
+  // 11 chars (10+NUL) ought to fit into the small string
+  std::string str("hello worl");
+  assert(str.c_str() == reinterpret_cast<char *>(&str));
+  assert(str.capacity() == str.length()); // we're full up
+
+  // but this won't
+  std::string str2("hello world");
+  assert(str2.c_str() != reinterpret_cast<char *>(&str2));
+  assert(str.capacity() >= str.length());
+
+  return 0;
+}();
+
+} // namespace
+
+// EM_ASM(alert('hi2'));
+// ->
+// ((void)emscripten_asm_const_int(
+//     (__extension__({
+//       __attribute__((section("em_asm"), aligned(1))) static const char x[] =
+//           "alert('hi2')";
+//       x;
+//     })),
+//     __em_asm_sig_builder<__typeof__(__em_asm_make_type_tuple())>::buffer));
+
 // lets manually mangle some names yey
 extern "C"
 {
@@ -199,6 +331,14 @@ extern "C"
     return new Session(module, commands);
   };
   EMSCRIPTEN_KEEPALIVE void Session__destroy__(Session *self) { delete self; };
+  EMSCRIPTEN_KEEPALIVE struct talvos::Params *Session__params_ref(Session *self)
+  {
+    return &self->CF.Params;
+  };
+  EMSCRIPTEN_KEEPALIVE struct talvos::Module *Session__module_ref(Session *self)
+  {
+    return self->CF.Module.get();
+  };
 
   EMSCRIPTEN_KEEPALIVE void Session_run(Session *self) { self->run(); };
   EMSCRIPTEN_KEEPALIVE void Session_start(Session *self, ExecutionUniverse *out)

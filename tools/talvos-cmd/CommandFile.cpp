@@ -225,8 +225,12 @@ void CommandFile::parseDispatch(Mode mode)
 {
   if (!Module)
     throw "DISPATCH reached with no prior MODULE command";
-  if (!Entry)
+  if (!Entry && !strlen(Params.EntryName))
     throw "DISPATCH reached with no prior ENTRY command";
+  else if (strlen(Params.EntryName))
+    if (!(Entry =
+              Module->getEntryPoint(Params.EntryName, EXEC_MODEL_GLCOMPUTE)))
+      throw "Bad EntryPoint!";
 
   talvos::Dim3 GroupCount;
   GroupCount.X = get<uint32_t>("group count X");
