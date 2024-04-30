@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:ac85f380a63b13dfcefa89046420e1781752bab202122f8f50032edf31be0021
-# FROM buildpack-deps:bookworm@sha256:f0f50817c8d3f488aa1b4fe0f1e873ed2c698638b3ac68128334958e00b8438c as emscripten-base
-FROM emscripten/emsdk@sha256:2491bc4bf6caf8c41993660822341bc72759cb577363dfe0781f0a2d05f7d357 as emscripten-base
+FROM emscripten/emsdk@sha256:b640884dffe6ffd6270b4e61548dc2c597f01aaf2c8d7b788009cb7f4719dd20 as emscripten-base
 
 # cf. https://github.com/moby/buildkit/blob/068cf686a7e5c3254244d0acc54636f4f393611e/frontend/dockerfile/docs/syntax.md#example-cache-apt-packages
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
@@ -17,6 +16,10 @@ ENV CMAKE_BUILD_TYPE=Debug \
     CMAKE_GENERATOR=Ninja \
     CMAKE_TOOLCHAIN_FILE=/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake \
     VERBOSE=1
+
+RUN --mount=type=cache,target=/emsdk/upstream/.npm,sharing=locked \
+    npm set cache /emsdk/upstream/.npm && \
+    npm --prefix /emsdk/upstream/emscripten install
 
 FROM emscripten-base AS spirv-headers-git
 

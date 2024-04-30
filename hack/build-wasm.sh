@@ -13,8 +13,10 @@ set -x
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+docker build -f Dockerfile.emscripten . --target=talvos
+
 docker run -it --rm  -v "$(pwd)":/usr/src/talvos -w /usr/src/talvos \
     "$(docker build -qf Dockerfile.emscripten . --target=talvos)" -- \
     cmake --build build/emscripten-docker --target talvos-wasm
 
-cp -u build/emscripten-docker/tools/talvos-cmd/talvos-wasm.* "$1"
+cp --verbose --update=older build/emscripten-docker/tools/talvos-cmd/talvos-wasm.* "$1"

@@ -270,19 +270,38 @@ struct __short
   };
 };
 
+static_assert(std::has_unique_object_representations_v<__long>);
 static_assert(offsetof(__long, data) == 0);
 static_assert(offsetof(__long, size) == 4);
 static_assert(offsetof(__long, bits) == 8);
 
+static_assert(std::has_unique_object_representations_v<__short>);
 static_assert(__min_cap == 11);
 static_assert(offsetof(__short, data) == 0);
 static_assert(offsetof(__short, bits) == 11);
+
+// https://stackoverflow.com/questions/76932233/trying-to-use-stdbit-cast-with-a-bitfield-struct-why-is-it-not-constexpr
+// well, looks like compiler support hasn't caught up yet to c++20
+// static_assert([] {
+//   struct __short
+//   {
+//     value_type data[__min_cap];
+//     unsigned char __padding_[sizeof(value_type) - 1];
+//     struct
+//     {
+//       unsigned char size : 7, __is_long_ : 1;
+//     } bits;
+//   } S = {.bits = {.size = 0x0, .__is_long_ = true}};
+
+//   return std::bit_cast<unsigned char>(S.bits);
+// }() == 0x80);
+
 // can't do this with static_assert (i.e. constexpr), because we're switching
-// active members yes, it's possible that the thing wasn't fully initialized,
+// active members. yes, it's possible that the thing wasn't fully initialized,
 // but :shrug:
 static int __assert_bits = [] {
-  // make it static so the compiler still has to write down the bit pattern
-  // jerk.
+  // make it static so the compiler still has to write down the bit pattern.
+  // I'm being a little petty.
   static __long L = {.cap = 0x0, .__is_long_ = true};
   assert(L.bits == 0x8000'0000);
 
@@ -295,17 +314,38 @@ static int __assert_bits = [] {
   return 0;
 }();
 
-// NB this'll be all different on a 64-bit system
+// TODO: it might be nice to pull this into its own test module
+//   (w/ `-sENVIRONMENT=node`?)
+static_assert(sizeof(size_t) == 4);
+#ifndef _LIBCPP_ABI_ALTERNATE_STRING_LAYOUT
+#error unknown string layout
+#endif
+
+#if _LIBCPP_ABI_VERSION != 2
+#error unknown libcpp abi
+#endif
+// NB this'll be different on a 64-bit system; the wider pointers mean instead
+// of a split at 11/12 characters we ought to see a split at 23/24 bytes
 static int __assert_sso = [] {
   // 11 chars (10+NUL) ought to fit into the small string
   std::string str("hello worl");
   assert(str.c_str() == reinterpret_cast<char *>(&str));
   assert(str.capacity() == str.length()); // we're full up
 
-  // but this won't
+  auto sstr = reinterpret_cast<__short *>(&str);
+  assert(sstr->size == str.size());
+  assert(!sstr->__is_long_);
+  assert(sstr->bits == str.size());
+
+  // but this won't fit
   std::string str2("hello world");
   assert(str2.c_str() != reinterpret_cast<char *>(&str2));
-  assert(str.capacity() >= str.length());
+  assert(str2.capacity() > str2.length());
+
+  auto lstr = reinterpret_cast<__long *>(&str2);
+  assert(lstr->size == str2.size());
+  assert(lstr->__is_long_);
+  assert(lstr->bits == (0x8000'0000 | (str2.capacity() + 1)));
 
   return 0;
 }();
