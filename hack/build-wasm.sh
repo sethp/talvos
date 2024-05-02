@@ -49,6 +49,10 @@ set -x
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# ensure we make the `./build` directory outside of the container, so
+# it's owned by whoever's running this script
+mkdir -p ./build
+
 docker build -f Dockerfile.emscripten . --target=talvos -t "$TAG"
 
 [ -d ./build/emscripten-docker ] || {
