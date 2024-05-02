@@ -57,6 +57,11 @@ docker build -f Dockerfile.emscripten . --target=talvos -t "$TAG"
     cmake -B build/emscripten-docker
 }
 
+# TODO something about this?
+# ```
+# cache:INFO: generating system asset: symbol_lists/1701111f65fe30b91927855eb0451158a36e4416.json... (this will be cached in "/emsdk/upstream/emscripten/cache/symbol_lists/1701111f65fe30b91927855eb0451158a36e4416.json" for subsequent builds)
+# ```
+
 docker run -it --rm -v "$(pwd)":/usr/src/talvos -w /usr/src/talvos \
     "$TAG" -- \
     cmake --build build/emscripten-docker --target talvos-wasm

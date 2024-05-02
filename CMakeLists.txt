@@ -26,12 +26,11 @@ if (EMSCRIPTEN)
   # FRAGILE: depends on the location of the binary in the server lol
   # (see: Dockerfile.emscripten)
   # TODO[seth]: it looks like another possible option here is to use an absolute path? which the chrome dev tools "just" resolve with `file://`
-  add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Tools=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Tools)
-  add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Headers=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Headers)
+  # add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Tools=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Tools)
+  # add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Headers=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Headers)
 
   add_compile_options(-fdebug-compilation-dir=.) # TODO w.. t... f.....
-  add_compile_options(-ffile-prefix-map=/usr/src/talvos=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_talvos)
-
+  add_compile_options(-ffile-prefix-map=/usr/src/talvos=../wasm/talvos)
 
   ## a monument to the ideas that didn't work:
 

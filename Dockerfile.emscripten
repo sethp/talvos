@@ -108,8 +108,8 @@ RUN --mount=type=cache,target=/root/.cache/ccache,sharing=shared \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=yes \
-      -DCMAKE_C_FLAGS="-gdwarf-5 -gembed-source -Og" \
-      -DCMAKE_CXX_FLAGS="-gdwarf-5 -gembed-source -Og" \
+      -DCMAKE_C_FLAGS="-gdwarf-5 -gembed-source -Og -fdebug-compilation-dir=. -ffile-prefix-map=/usr/src/SPIRV-Tools=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Tools" \
+      -DCMAKE_CXX_FLAGS="-gdwarf-5 -gembed-source -Og -fdebug-compilation-dir=. -ffile-prefix-map=/usr/src/SPIRV-Tools=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Tools" \
       -DCMAKE_SHARED_LINKER_FLAGS='-sERROR_ON_WASM_CHANGES_AFTER_LINK -sWASM_BIGINT -sASSERTIONS=1' \
       -DCMAKE_EXE_LINKER_FLAGS='-sERROR_ON_WASM_CHANGES_AFTER_LINK -sWASM_BIGINT -sASSERTIONS=1' \
     ;
@@ -139,7 +139,6 @@ RUN <<'SHENANIGANS' tee /dev/stderr | bash -eux
     mkdir -p /@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/
     ln -s {/usr/src/,/@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_}SPIRV-Tools
     ln -s {/usr/src/,/@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_}SPIRV-Headers
-    ln -s {/usr/src/,/@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_}talvos
 SHENANIGANS
 
 WORKDIR /usr/src/talvos

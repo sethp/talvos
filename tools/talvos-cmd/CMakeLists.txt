@@ -77,6 +77,7 @@ if (EMSCRIPTEN)
 
     target_link_options(talvos-wasm PUBLIC -sERROR_ON_WASM_CHANGES_AFTER_LINK -sWASM_BIGINT)
     target_link_options(talvos-wasm PUBLIC -Og)
+    # target_link_options(talvos-wasm PUBLIC -gseparate-dwarf=$<TARGET_FILE_DIR:talvos-wasm>/$<TARGET_FILE_BASE_NAME:talvos-wasm>.dwp)
 
     # Generates source maps; however, in Chrome (which has support for DWARF), the less-capable
     # sourcemap overrides the .dwp (dwarf package) if it exists.
