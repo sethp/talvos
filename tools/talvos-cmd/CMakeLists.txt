@@ -101,7 +101,7 @@ if (EMSCRIPTEN)
         COMMAND ${EMDWP}
             -e $<TARGET_FILE_DIR:talvos-wasm>/$<TARGET_FILE_BASE_NAME:talvos-wasm>.wasm
             -o $<TARGET_FILE_DIR:talvos-wasm>/$<TARGET_FILE_BASE_NAME:talvos-wasm>.wasm.dwp
-        WORKING_DIRECTORY ${Talvos_BINARY_DIR} # maps to e.g. /usr/src/talvos/build/emscripten-docker
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR} # maps to e.g. /usr/src/talvos/build/emscripten-docker
     )
 endif()
 

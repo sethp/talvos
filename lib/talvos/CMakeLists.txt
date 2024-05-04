@@ -7,35 +7,21 @@ include(CheckIncludeFiles)
 include(CheckLibraryExists)
 include(FindThreads)
 
-# Check for SPIRV headers
-set(SPIRV_INCLUDE_DIR "" CACHE STRING "Directory containing SPIR-V headers")
-set(CMAKE_REQUIRED_INCLUDES "${SPIRV_INCLUDE_DIR}")
-unset(SPIRV_HEADER_FOUND CACHE)
-check_include_file_cxx("spirv/unified1/spirv.h" SPIRV_HEADER_FOUND)
-if (NOT SPIRV_HEADER_FOUND)
-  message(FATAL_ERROR "SPIR-V header required, try setting SPIRV_INCLUDE_DIR. (saw ${SPIRV_INCLUDE_DIR})")
+find_package(SPIRV-Headers REQUIRED)
+find_package(SPIRV-Tools REQUIRED)
+
+# TODO is there a convention for doing this? maybe `find_dependency`?
+if (USE_INSTALLED_SPIRV-Tools)
+unset(SPIRV-Tools_LIBRARIES)
+find_library(SPIRV-Tools_LIBRARIES SPIRV-Tools)
 endif()
 
-# Check for SPIRV-Tools header
-set(SPIRV_TOOLS_INCLUDE_DIR "" CACHE STRING
-    "Directory containing SPIRV-Tools headers")
-set(CMAKE_REQUIRED_INCLUDES "${SPIRV_TOOLS_INCLUDE_DIR}")
-unset(SPIRV_TOOLS_HEADER_FOUND CACHE)
-check_include_file_cxx("spirv-tools/libspirv.hpp" SPIRV_TOOLS_HEADER_FOUND)
-if (NOT SPIRV_TOOLS_HEADER_FOUND)
-  message(FATAL_ERROR
-          "SPIRV-Tools header required, try setting SPIRV_TOOLS_INCLUDE_DIR.")
+if (NOT SPIRV-Tools_LIBRARIES)
+	# message(STATUS "searching for SPIRV-Tools library in  ${SPIRV-Tools_LIBRARY_DIR}")
+	find_library(SPIRV-Tools_LIBRARIES SPIRV-Tools PATHS "${SPIRV-Tools_LIBRARY_DIR}")
 endif()
+message(STATUS "SPIRV-Tools library: ${SPIRV-Tools_LIBRARIES}")
 
-# Check for SPIRV-Tools library
-set(SPIRV_TOOLS_LIBRARY_DIR "" CACHE STRING
-    "Directory containing SPIRV-Tools libraries")
-find_library(SPIRV_TOOLS_LIB SPIRV-Tools PATHS "${SPIRV_TOOLS_LIBRARY_DIR}")
-message(STATUS "SPIRV-Tools library: ${SPIRV_TOOLS_LIB}")
-if (NOT SPIRV_TOOLS_LIB)
-  message(FATAL_ERROR
-          "SPIRV-Tools library required, try setting SPIRV_TOOLS_LIBRARY_DIR.")
-endif()
 
 # Check for GNU readline library
 if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
@@ -51,7 +37,7 @@ if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     list(APPEND TALVOS_OPTIONAL_LIBS readline)
   else()
     set(HAVE_READLINE 0)
-    message(STATUS "GNU readline library not found."
+    message(STATUS "GNU readline library not found. "
                     "The interactive debugger will not have a command history.")
   endif()
 else()
@@ -119,10 +105,10 @@ if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" AND NOT EMSCRIPTEN)
 endif()
 
 add_library(talvos ${CORE_LIB_TYPE} ${TALVOS_SOURCES} ${TALVOS_HEADERS})
-target_include_directories(talvos PRIVATE "${SPIRV_INCLUDE_DIR}")
-target_include_directories(talvos PRIVATE "${SPIRV_TOOLS_INCLUDE_DIR}")
+target_include_directories(talvos PUBLIC "${SPIRV-Headers_INCLUDE_DIRS}")
+target_include_directories(talvos PUBLIC "${SPIRV-Tools_INCLUDE_DIRS}")
 target_include_directories(talvos PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(talvos "${SPIRV_TOOLS_LIB}")
+target_link_libraries(talvos "${SPIRV-Tools_LIBRARIES}")
 target_link_libraries(talvos "${CMAKE_DL_LIBS}")
 target_link_libraries(talvos "${CMAKE_THREAD_LIBS_INIT}")
 target_link_libraries(talvos "${TALVOS_OPTIONAL_LIBS}")

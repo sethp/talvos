@@ -29,8 +29,8 @@ if (EMSCRIPTEN)
   # add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Tools=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Tools)
   # add_compile_options(-ffile-prefix-map=/usr/src/SPIRV-Headers=../@fs/home/seth/Code/src/github.com/sethp/learn-gpgpu/tmp/_SPIRV-Headers)
 
-  add_compile_options(-fdebug-compilation-dir=.) # TODO w.. t... f.....
-  add_compile_options(-ffile-prefix-map=/usr/src/talvos=../wasm/talvos)
+  # add_compile_options(-fdebug-compilation-dir=.) # TODO w.. t... f.....
+  # add_compile_options(-ffile-prefix-map=/usr/src/talvos=../wasm/talvos)
 
   ## a monument to the ideas that didn't work:
 
