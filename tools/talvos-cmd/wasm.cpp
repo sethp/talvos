@@ -433,6 +433,16 @@ extern "C"
     return talvos::Module::load(ModuleText) != nullptr;
   }
 
+  EMSCRIPTEN_KEEPALIVE void test_entry(const char *module, const char *entry,
+                                       const char *commands)
+  {
+    Session session(module, commands);
+    strncpy(session.CF.Params.EntryName, entry,
+            sizeof(session.CF.Params.EntryName));
+    session.CF.Params.EntryName[sizeof(session.CF.Params.EntryName) - 1] = '\0';
+    session.run();
+  }
+
   EMSCRIPTEN_KEEPALIVE Session *run_wasm(const char *module,
                                          const char *commands)
   {

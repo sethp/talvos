@@ -26,7 +26,7 @@ class Module;
 extern "C" struct Params
 {
   // used to populate Entry at dispatch time, if set
-  const char EntryName[64] = {'\0'};
+  char EntryName[64] = {'\0'};
 };
 } // namespace talvos
 
