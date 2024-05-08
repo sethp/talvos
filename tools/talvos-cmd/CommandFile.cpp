@@ -108,7 +108,10 @@ void CommandFile::parseBuffer()
 
   // Process initializer.
   string Init = get<string>("buffer initializer");
-  if (Init == "DATA")
+  if (Init == "UNINIT")
+    // nothing to do
+    ;
+  else if (Init == "DATA")
   {
     string InitType = get<string>("data type");
     if (InitType == "INT8")
