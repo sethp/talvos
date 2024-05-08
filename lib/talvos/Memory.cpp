@@ -315,7 +315,7 @@ void Memory::store(uint64_t Address, uint64_t NumBytes, const uint8_t *Data)
     std::stringstream Err;
     Err << "Invalid store of " << NumBytes << " bytes"
         << " to address 0x" << std::hex << Address << " ("
-        << scopeToString(Scope) << " scope) ";
+        << scopeToString(Scope) << " scope)";
     Dev.reportError(Err.str());
     return;
   }
@@ -338,7 +338,7 @@ void Memory::copy(uint64_t DstAddress, Memory &DstMem, uint64_t SrcAddress,
     std::stringstream Err;
     Err << "Invalid load of " << NumBytes << " bytes"
         << " from address 0x" << std::hex << SrcAddress << " ("
-        << scopeToString(SrcMem.Scope) << " scope) ";
+        << scopeToString(SrcMem.Scope) << " scope)";
     SrcMem.Dev.reportError(Err.str());
     return;
   }
