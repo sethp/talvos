@@ -164,7 +164,10 @@ public:
         case SpvCapabilityUniformAndStorageBuffer8BitAccess:
         case SpvCapabilityVariablePointers:
         case SpvCapabilityVariablePointersStorageBuffer:
+        case SpvCapabilityDispatchTALVOS:
           break;
+        case SpvCapabilityDeviceEnqueue:
+        case SpvCapabilitySubgroupDispatch:
         default:
           std::cerr << "Unimplemented capability: " << Capability << std::endl;
           abort();
@@ -341,7 +344,8 @@ public:
         if (strcmp(Extension, "SPV_KHR_8bit_storage") &&
             strcmp(Extension, "SPV_KHR_16bit_storage") &&
             strcmp(Extension, "SPV_KHR_storage_buffer_storage_class") &&
-            strcmp(Extension, "SPV_KHR_variable_pointers"))
+            strcmp(Extension, "SPV_KHR_variable_pointers") &&
+            strcmp(Extension, "SPV_TALVOS_dispatch"))
         {
           std::cerr << "Unimplemented extension " << Extension << std::endl;
           abort();

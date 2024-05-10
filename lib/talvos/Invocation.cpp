@@ -136,6 +136,7 @@ void Invocation::execute(const talvos::Instruction *Inst)
     DISPATCH(SpvOpConvertUToF, ConvertUToF);
     DISPATCH(SpvOpCopyMemory, CopyMemory);
     DISPATCH(SpvOpCopyObject, CopyObject);
+    DISPATCH(SpvOpDispatchTALVOS, Dispatch_Talvos);
     DISPATCH(SpvOpDot, Dot);
     DISPATCH(SpvOpExtInst, ExtInst);
     DISPATCH(SpvOpFAdd, FAdd);
@@ -631,6 +632,13 @@ void Invocation::executeCopyMemory(const Instruction *Inst)
 void Invocation::executeCopyObject(const Instruction *Inst)
 {
   Objects[Inst->getOperand(1)] = Objects[Inst->getOperand(2)];
+}
+
+void Invocation::executeDispatch_Talvos(const Instruction *Inst)
+{
+  std::cerr << "oh my god it's been a long road. but we're finally home."
+            << std::endl;
+  abort();
 }
 
 void Invocation::executeDot(const Instruction *Inst)

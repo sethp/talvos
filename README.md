@@ -2,6 +2,14 @@
 
 Hi, Seth here, sorry for the source dump. I'm still learning my way through a whole bunch of layers at once, so things are gonna be weird for a bit.
 
+## What you need to know
+
+This is being actively co-developed as part of the https://github.com/sethp/learn-gpgpu project.
+
+It's not really stand-alone right now, it's probably better for you to only look at it through the lens of that project. Or, if you've got an idea in mind for how it *should* stand on its own and want to help, just let me know.
+
+## Previous notes
+
 The two most important things I'm getting out of this stuff right now are:
 
 1. A relatively convenient workflow for pushing/pulling things across the browser/WASM boundary; that's driven entirely from a different repo (https://github.com/sethp/learn-gpgpu), though, so there's no guarantees on this project making much sense stand-alone.
@@ -14,6 +22,7 @@ Things that I know are broken (PRs welcome!):
 2. The emscripten build is more than a little weird, and ctest hangs when you try and run it.
 3. Some unknown amount of the vulkan stuff, especially in emscripten-land. I haven't dug into it too much.
 4. The docs here aren't kept particularly up-to-date.
+5. This depends on a forked SPIRV-Headers so that I could more rapidly prototype extensions. See the big warning at the top for how to build it yourself.
 
 Things that sure seem like they could work?
 
