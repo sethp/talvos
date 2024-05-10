@@ -177,11 +177,11 @@ void Invocation::execute(const talvos::Instruction *Inst)
     DISPATCH(SpvOpISub, ISub);
     DISPATCH(SpvOpKill, Kill);
     DISPATCH(SpvOpLoad, Load);
+    DISPATCH(SpvOpLogicalAnd, LogicalAnd);
     DISPATCH(SpvOpLogicalEqual, LogicalEqual);
+    DISPATCH(SpvOpLogicalNot, LogicalNot);
     DISPATCH(SpvOpLogicalNotEqual, LogicalNotEqual);
     DISPATCH(SpvOpLogicalOr, LogicalOr);
-    DISPATCH(SpvOpLogicalAnd, LogicalAnd);
-    DISPATCH(SpvOpLogicalNot, LogicalNot);
     DISPATCH(SpvOpMatrixTimesScalar, MatrixTimesScalar);
     DISPATCH(SpvOpMatrixTimesVector, MatrixTimesVector);
     DISPATCH(SpvOpNot, Not);
