@@ -84,6 +84,23 @@ static thread_local Invocation *CurrentInvocation;
 uint32_t PipelineExecutor::NextBreakpoint = 1;
 std::map<uint32_t, uint32_t> PipelineExecutor::Breakpoints;
 
+PipelineExecutor::SavedLocals PipelineExecutor::pushState()
+{
+  return {Lanes,        Assignments,       ActiveLaneMask, IsWorkerThread,
+          CurrentGroup, CurrentInvocation, NextBreakpoint, Breakpoints};
+}
+
+void PipelineExecutor::popState(SavedLocals &&Saved)
+{
+  Lanes = Saved.Lanes;
+  Assignments = Saved.Assignments;
+  ActiveLaneMask = Saved.ActiveLaneMask;
+  CurrentGroup = Saved.CurrentGroup;
+  CurrentInvocation = Saved.CurrentInvocation;
+  NextBreakpoint = Saved.NextBreakpoint;
+  Breakpoints = Saved.Breakpoints;
+}
+
 /// State to be carried through the execution of a render pipeline.
 struct PipelineExecutor::RenderPipelineState
 {
@@ -287,8 +304,8 @@ void PipelineExecutor::start(const talvos::DispatchCommand &Cmd)
   // Run worker threads to process groups.
   NextWorkIndex = 0;
 
-  // TODO this messes with thread locals, which works b/c we're single threaded,
-  // but....
+  // TODO this messes with thread locals, which works b/c we're single
+  // threaded, but....
   startComputeWorker();
 }
 

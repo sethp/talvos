@@ -11,6 +11,7 @@
 #include "talvos/Instruction.h"
 #include "talvos/Invocation.h"
 #include "talvos/Module.h"
+#include <cassert>
 
 namespace talvos
 {
@@ -19,6 +20,7 @@ PipelineStage::PipelineStage(Device &D, std::shared_ptr<const Module> M,
                              const EntryPoint *EP, const SpecConstantMap &SM)
     : Mod(M), EP(EP)
 {
+  assert(EP);
   Objects = M->getObjects();
 
   // Update objects with specialization constant values.

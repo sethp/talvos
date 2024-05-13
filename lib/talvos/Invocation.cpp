@@ -9,6 +9,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 
@@ -16,6 +17,8 @@
 #include <spirv/unified1/spirv.h>
 
 #include "talvos/Block.h"
+#include "talvos/Commands.h"
+#include "talvos/ComputePipeline.h"
 #include "talvos/Device.h"
 #include "talvos/EntryPoint.h"
 #include "talvos/Function.h"
@@ -24,6 +27,8 @@
 #include "talvos/Invocation.h"
 #include "talvos/Memory.h"
 #include "talvos/Module.h"
+#include "talvos/PipelineContext.h"
+#include "talvos/PipelineExecutor.h"
 #include "talvos/PipelineStage.h"
 #include "talvos/Type.h"
 #include "talvos/Variable.h"
@@ -636,9 +641,30 @@ void Invocation::executeCopyObject(const Instruction *Inst)
 
 void Invocation::executeDispatch_Talvos(const Instruction *Inst)
 {
-  std::cerr << "oh my god it's been a long road. but we're finally home."
-            << std::endl;
-  abort();
+  static int cnt = 0;
+
+  talvos::PipelineStage *Stage = new talvos::PipelineStage(
+      Dev, CurrentModule,
+      CurrentModule->getEntryPoint(cnt++ ? "FILL" : "SERIES",
+                                   5 /*EXEC_MODEL_GLCOMPUTE*/),
+      {});
+
+  talvos::ComputePipeline ComputePipeline(Stage);
+
+  talvos::PipelineContext PC;
+  PC.clear();
+  PC.bindComputePipeline(&ComputePipeline);
+  PC.bindComputeDescriptors(
+      Dev.getPipelineExecutor().PC->getComputeDescriptors());
+
+  auto Dispatch = talvos::DispatchCommand(PC, {0, 0, 0}, {16, 1, 1});
+
+  // TODO[seth] refactor into execution tree
+  auto S = Dev.getPipelineExecutor().pushState();
+  PipelineExecutor subExec({}, Dev);
+  subExec.run(Dispatch);
+  Dev.getPipelineExecutor().popState(std::move(S));
+  // Inst->getOperand(unsigned int i)
 }
 
 void Invocation::executeDot(const Instruction *Inst)

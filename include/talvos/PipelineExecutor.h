@@ -42,6 +42,7 @@ class Workgroup;
 class PipelineExecutorKey
 {
   friend class Device;
+  friend class Invocation;
   PipelineExecutorKey(){};
 };
 
@@ -139,8 +140,27 @@ public:
   typedef Dim3 LogCoord;
 
   // TODO[seth] merge these into one?
+  // TODO[seth] why are these static?
   static std::map<PhyCoord, LaneState> Lanes; // this is a view
   static std::map<PhyCoord, LogCoord> Assignments;
+
+  struct SavedLocals
+  {
+    decltype(Lanes) Lanes;
+    decltype(Assignments) Assignments;
+
+    uint64_t ActiveLaneMask;
+
+    bool IsWorkerThread;
+    Workgroup *CurrentGroup;
+    Invocation *CurrentInvocation;
+
+    uint32_t NextBreakpoint = 1;
+    std::map<uint32_t, uint32_t> Breakpoints;
+  };
+
+  SavedLocals pushState();
+  void popState(SavedLocals &&);
 
 private:
   /// Internal structure to hold the state of a render pipeline.
@@ -228,6 +248,8 @@ private:
 
   /// The command currently being executed.
   const Command *CurrentCommand;
+
+  friend class Invocation;
 
   /// The pipeline context for the command currently being executed.
   const PipelineContext *PC = nullptr;
