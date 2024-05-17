@@ -646,7 +646,7 @@ void Invocation::executeDispatch_Talvos(const Instruction *Inst)
   talvos::PipelineStage *Stage = new talvos::PipelineStage(
       Dev, CurrentModule,
       CurrentModule->getEntryPoint(cnt++ ? "FILL" : "SERIES",
-                                   5 /*EXEC_MODEL_GLCOMPUTE*/),
+                                   6 /*EXEC_MODEL_GLCOMPUTE*/),
       {});
 
   talvos::ComputePipeline ComputePipeline(Stage);

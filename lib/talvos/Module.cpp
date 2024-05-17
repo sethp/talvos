@@ -14,7 +14,9 @@
 #include <spirv-tools/libspirv.h>
 #include <spirv-tools/libspirv.hpp>
 
+#define SPV_ENABLE_UTILITY_CODE
 #include <spirv/unified1/spirv.h>
+#undef SPV_ENABLE_UTILITY_CODE
 
 #include "talvos/Block.h"
 #include "talvos/EntryPoint.h"
@@ -136,7 +138,8 @@ public:
       {
       case SpvOpCapability:
       {
-        uint32_t Capability = Inst->words[Inst->operands[0].offset];
+        SpvCapability Capability =
+            (SpvCapability)Inst->words[Inst->operands[0].offset];
         switch (Capability)
         {
         case SpvCapabilityClipDistance:
@@ -166,10 +169,18 @@ public:
         case SpvCapabilityVariablePointersStorageBuffer:
         case SpvCapabilityDispatchTALVOS:
           break;
+        case SpvCapabilityKernel:
+          // TODO[seth] figure out what all this implies
+
+          // std::cerr << "Warning: partially implemented capability: "
+          //           << SpvCapabilityToString(Capability) << std::endl;
+          break;
+
         case SpvCapabilityDeviceEnqueue:
         case SpvCapabilitySubgroupDispatch:
         default:
-          std::cerr << "Unimplemented capability: " << Capability << std::endl;
+          std::cerr << "Unimplemented capability: "
+                    << SpvCapabilityToString(Capability) << std::endl;
           abort();
         }
         break;
@@ -300,17 +311,24 @@ public:
       }
       case SpvOpEntryPoint:
       {
-        uint32_t ExecutionModel = Inst->words[Inst->operands[0].offset];
-        uint32_t Id = Inst->words[Inst->operands[1].offset];
-        char *Name = (char *)(Inst->words + Inst->operands[2].offset);
-        if (ExecutionModel != SpvExecutionModelGLCompute &&
-            ExecutionModel != SpvExecutionModelVertex &&
-            ExecutionModel != SpvExecutionModelFragment)
+        auto ExecutionModel =
+            (SpvExecutionModel)Inst->words[Inst->operands[0].offset];
+
+        switch (ExecutionModel)
         {
-          std::cerr << "Unimplemented execution model: " << ExecutionModel
-                    << std::endl;
+        case SpvExecutionModelGLCompute:
+        case SpvExecutionModelVertex:
+        case SpvExecutionModelFragment:
+        case SpvExecutionModelKernel:
+          break;
+        default:
+          std::cerr << "Unimplemented execution model: "
+                    << SpvExecutionModelToString(ExecutionModel) << std::endl;
           abort();
         }
+
+        auto Id = (SpvId)Inst->words[Inst->operands[1].offset];
+        char *Name = (char *)(Inst->words + Inst->operands[2].offset);
 
         // Save entry point specification for creation later.
         std::vector<uint32_t> Variables(Inst->words + Inst->operands[3].offset,
@@ -403,17 +421,24 @@ public:
         break;
       case SpvOpMemoryModel:
       {
-        uint32_t AddressingMode = Inst->words[Inst->operands[0].offset];
-        uint32_t MemoryModel = Inst->words[Inst->operands[1].offset];
+        auto AddressingMode =
+            (SpvAddressingModel)Inst->words[Inst->operands[0].offset];
+        auto MemoryModel =
+            (SpvMemoryModel)Inst->words[Inst->operands[1].offset];
         if (AddressingMode != SpvAddressingModelLogical)
         {
           std::cerr << "Unrecognized addressing mode " << AddressingMode
                     << std::endl;
           abort();
         }
-        if (MemoryModel != SpvMemoryModelGLSL450)
+        switch (MemoryModel)
         {
-          std::cerr << "Unrecognized memory model " << MemoryModel << std::endl;
+        case SpvMemoryModelGLSL450:
+        case SpvMemoryModelOpenCL:
+          break;
+        default:
+          std::cerr << "Unrecognized memory model "
+                    << SpvMemoryModelToString(MemoryModel) << std::endl;
           abort();
         }
         break;

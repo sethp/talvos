@@ -29,6 +29,7 @@ using namespace std;
 
 // Values match SPIR-V spec.
 #define EXEC_MODEL_GLCOMPUTE 5
+#define EXEC_MODEL_KERNEL 6
 
 class NotRecognizedException : exception
 {
@@ -232,7 +233,8 @@ void CommandFile::parseDispatch(Mode mode)
     throw "DISPATCH reached with no prior ENTRY command";
   else if (strlen(Params.EntryName))
     if (!(Entry =
-              Module->getEntryPoint(Params.EntryName, EXEC_MODEL_GLCOMPUTE)))
+              Module->getEntryPoint(Params.EntryName, EXEC_MODEL_GLCOMPUTE)) &&
+        !(Entry = Module->getEntryPoint(Params.EntryName, EXEC_MODEL_KERNEL)))
       throw "Bad EntryPoint!";
 
   talvos::Dim3 GroupCount;
@@ -327,6 +329,8 @@ void CommandFile::parseEntry()
 {
   string Name = get<string>("entry name");
   Entry = Module->getEntryPoint(Name, EXEC_MODEL_GLCOMPUTE);
+  if (!Entry)
+    Entry = Module->getEntryPoint(Name, EXEC_MODEL_KERNEL);
   if (!Entry)
     throw "invalid entry point";
 }
