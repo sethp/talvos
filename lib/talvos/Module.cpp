@@ -6,11 +6,15 @@
 /// \file Module.cpp
 /// This file defines the Module class.
 
+#include "talvos/Buffer.h"
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <spirv-tools/libspirv.h>
 #include <spirv-tools/libspirv.hpp>
 
@@ -136,6 +140,43 @@ public:
     {
       switch (Inst->opcode)
       {
+      case SpvOpBufferTALVOS:
+      {
+        const uint32_t Id = Inst->result_id;
+        const Type *Ty = Mod->getType(Inst->type_id);
+        const uint32_t StorageClass = Inst->words[Inst->operands[2].offset];
+        const size_t Size = Inst->words[Inst->operands[3].offset];
+
+        assert(Ty->isPointer());
+        // TODO: validation rule, or drop StorageClass operand entirely and
+        // just read it from the pointer type
+        assert(Ty->getStorageClass() == StorageClass);
+
+        // TODO[seth]: I just want to get to the uint32 juciness... is this the
+        // way?
+        Type const *ElemTy = Ty->getElementType();
+        while (ElemTy->isComposite())
+          ElemTy = ElemTy->getElementType();
+
+        if (auto Rem = Size % ElemTy->getSize())
+        {
+          std::cerr << "Refusing to allocate " << Size
+                    << " bytes of buffer for type `" << ElemTy << "` ("
+                    << Ty->getSize() << " bytes); would leave " << Rem
+                    << " trailing. Check your buffer size is a multiple of the "
+                       "type size."
+                    << std::endl;
+          abort();
+        }
+
+        Mod->Buffers.push_back(
+            Buffer{Id, Ty, Size, StorageClass,
+                   Inst->num_operands > 4
+                       ? std::make_optional(std::string(
+                             (char *)(Inst->words + Inst->operands[4].offset)))
+                       : std::nullopt});
+        break;
+      }
       case SpvOpCapability:
       {
         SpvCapability Capability =
@@ -168,8 +209,11 @@ public:
         case SpvCapabilityVariablePointers:
         case SpvCapabilityVariablePointersStorageBuffer:
         case SpvCapabilityDispatchTALVOS:
+        case SpvCapabilityExecTALVOS:
+        case SpvCapabilityBuffersTALVOS:
           break;
         case SpvCapabilityKernel:
+        case SpvCapabilityPhysicalStorageBufferAddresses:
           // TODO[seth] figure out what all this implies
 
           // std::cerr << "Warning: partially implemented capability: "
@@ -356,14 +400,26 @@ public:
         }
         break;
       }
+      case SpvOpExecutionGlobalSizeTALVOS:
+      {
+        uint32_t Entry = Inst->words[Inst->operands[0].offset];
+        Mod->addGlobalSize(Entry, Dim3(Inst->words + Inst->operands[1].offset));
+        break;
+      }
       case SpvOpExtension:
       {
         char *Extension = (char *)(Inst->words + Inst->operands[0].offset);
-        if (strcmp(Extension, "SPV_KHR_8bit_storage") &&
+        if (
+						strcmp(Extension, "SPV_KHR_8bit_storage") &&
             strcmp(Extension, "SPV_KHR_16bit_storage") &&
             strcmp(Extension, "SPV_KHR_storage_buffer_storage_class") &&
             strcmp(Extension, "SPV_KHR_variable_pointers") &&
-            strcmp(Extension, "SPV_TALVOS_dispatch"))
+            strcmp(Extension, "SPV_TALVOS_dispatch") &&
+            strcmp(Extension, "SPV_TALVOS_buffers") &&
+            strcmp(Extension, "SPV_TALVOS_exec") &&
+
+
+            true /*this is here to allow a 'trailing' && on the strcmp line above*/)
         {
           std::cerr << "Unimplemented extension " << Extension << std::endl;
           abort();
@@ -761,6 +817,12 @@ void Module::addLocalSize(uint32_t Entry, Dim3 LocalSize)
   LocalSizes[Entry] = LocalSize;
 }
 
+void Module::addGlobalSize(uint32_t Entry, Dim3 GlobalSize)
+{
+  assert(GlobalSizes.count(Entry) == 0);
+  GlobalSizes[Entry] = GlobalSize;
+}
+
 void Module::addObject(uint32_t Id, const Object &Obj)
 {
   assert(Id < Objects.size());
@@ -809,6 +871,14 @@ Dim3 Module::getLocalSize(uint32_t Entry) const
     return LocalSizes.at(Entry);
   else
     return Dim3(1, 1, 1);
+}
+
+Dim3 Module::getGlobalSize(uint32_t Entry) const
+{
+  if (GlobalSizes.count(Entry))
+    return GlobalSizes.at(Entry);
+  else
+    return Dim3(0, 0, 0);
 }
 
 const Object &Module::getObject(uint32_t Id) const { return Objects.at(Id); }

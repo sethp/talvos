@@ -70,6 +70,10 @@ public:
   /// Dump the contents of the buffer with base address \p Address to stdout.
   void dump(uint64_t Address) const;
 
+  /// Dump NumBytes of the buffer with base address \p Address to stdout.
+  /// NB: this cannot cross allocation boundaries!
+  void dump(uint64_t Address, uint64_t NumBytes) const;
+
   /// Get the scope of this memory instance.
   MemoryScope getScope() const { return Scope; }
 
@@ -123,13 +127,14 @@ private:
   std::mutex AtomicMutexes[NUM_ATOMIC_MUTEXES];
 
   /// An allocation within this memory instance.
-  struct Buffer
+  struct Alloc
   {
     uint64_t NumBytes; ///< The size of the allocation in bytes.
     uint8_t *Data;     ///< The raw data backing the allocation.
+    // TODO "generation" tracking (linked list?)
   };
-  std::vector<Buffer> Buffers;       ///< List of allocations.
-  std::vector<uint64_t> FreeBuffers; ///< Base addresses available for reuse.
+  std::vector<Alloc> Allocs;      ///< List of allocations.
+  std::vector<uint64_t> FreeList; ///< Base addresses available for reuse.
 
   /// Check whether an access resides in an allocated region of memory.
   bool isAccessValid(uint64_t Address, uint64_t NumBytes) const;

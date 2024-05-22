@@ -206,7 +206,7 @@ public:
 //       "{alert('sup')}";
 // };
 
-static_assert(sizeof(talvos::Module) == 104);
+static_assert(sizeof(talvos::Module) == 128);
 
 // we should expect these to be Very Not Stable as the compiler/class change,
 // right? But, if we can induce clang to author the JS wrapper for us,

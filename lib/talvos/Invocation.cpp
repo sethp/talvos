@@ -1687,6 +1687,7 @@ Memory &Invocation::getMemory(uint32_t StorageClass)
   case SpvStorageClassStorageBuffer:
   case SpvStorageClassUniform:
   case SpvStorageClassUniformConstant:
+  case SpvStorageClassPhysicalStorageBuffer:
     return Dev.getGlobalMemory();
   case SpvStorageClassWorkgroup:
     assert(Group && "Not executing within a workgroup.");

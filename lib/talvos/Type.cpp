@@ -71,7 +71,8 @@ Type::getStructMemberDecorations(uint32_t Index) const
 
 bool Type::isComposite() const
 {
-  return (Id == ARRAY || Id == STRUCT || Id == VECTOR || Id == MATRIX);
+  return (Id == ARRAY || Id == STRUCT || Id == VECTOR || Id == MATRIX ||
+          Id == RUNTIME_ARRAY);
 }
 
 bool Type::isScalar() const

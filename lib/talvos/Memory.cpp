@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -39,14 +40,14 @@ namespace talvos
 Memory::Memory(Device &D, MemoryScope Scope) : Dev(D), Scope(Scope)
 {
   // Skip the first buffer identifier (0).
-  Buffers.resize(1);
+  Allocs.resize(1);
 }
 
 Memory::~Memory()
 {
   // Release all allocations.
-  for (size_t Id = 1; Id < Buffers.size(); Id++)
-    delete[] Buffers[Id].Data;
+  for (size_t Id = 1; Id < Allocs.size(); Id++)
+    delete[] Allocs[Id].Data;
 }
 
 uint64_t Memory::allocate(uint64_t NumBytes)
@@ -54,24 +55,24 @@ uint64_t Memory::allocate(uint64_t NumBytes)
   std::lock_guard<std::mutex> Lock(Mutex);
 
   // Allocate buffer.
-  Buffer B;
+  Alloc B;
   B.NumBytes = NumBytes;
   B.Data = new uint8_t[NumBytes];
 
   // Get the next available buffer identifier.
   uint64_t Id;
-  if (FreeBuffers.size())
+  if (FreeList.size())
   {
     // Re-use previously released buffer identifier.
-    Id = FreeBuffers.back();
-    FreeBuffers.pop_back();
-    Buffers[Id] = B;
+    Id = FreeList.back();
+    FreeList.pop_back();
+    Allocs[Id] = B;
   }
   else
   {
     // Allocate new buffer identifier.
-    Id = Buffers.size();
-    Buffers.push_back(B);
+    Id = Allocs.size();
+    Allocs.push_back(B);
   }
 
   return (Id << OFFSET_BITS);
@@ -99,7 +100,7 @@ T Memory::atomic(uint64_t Address, uint32_t Opcode, uint32_t Scope,
   // Get pointer to memory location.
   uint64_t Id = (Address >> OFFSET_BITS);
   uint64_t Offset = (Address & (((uint64_t)-1) >> BUFFER_BITS));
-  T *Pointer = (T *)(Buffers[Id].Data + Offset);
+  T *Pointer = (T *)(Allocs[Id].Data + Offset);
 
   LOCK_ATOMIC_MUTEX(Address);
 
@@ -176,7 +177,7 @@ uint32_t Memory::atomicCmpXchg(uint64_t Address, uint32_t Scope,
   // Get pointer to memory location.
   uint64_t Id = (Address >> OFFSET_BITS);
   uint64_t Offset = (Address & (((uint64_t)-1) >> BUFFER_BITS));
-  uint32_t *Pointer = (uint32_t *)(Buffers[Id].Data + Offset);
+  uint32_t *Pointer = (uint32_t *)(Allocs[Id].Data + Offset);
 
   LOCK_ATOMIC_MUTEX(Address);
 
@@ -201,9 +202,9 @@ uint32_t Memory::atomicCmpXchg(uint64_t Address, uint32_t Scope,
 
 void Memory::dump() const
 {
-  for (uint64_t Id = 1; Id < Buffers.size(); Id++)
+  for (uint64_t Id = 1; Id < Allocs.size(); Id++)
   {
-    if (Buffers[Id].Data)
+    if (Allocs[Id].Data)
       dump(Id << OFFSET_BITS);
   }
 }
@@ -212,13 +213,27 @@ void Memory::dump(uint64_t Address) const
 {
   uint64_t Id = (Address >> OFFSET_BITS);
 
-  if (!Buffers[Id].Data)
+  if (Allocs.size() <= Id)
   {
     std::cerr << "Memory::dump() invalid address: " << Address << std::endl;
     return;
   }
 
-  for (uint64_t i = 0; i < Buffers[Id].NumBytes; i++)
+  dump(Address, Allocs[Id].NumBytes);
+}
+
+void Memory::dump(uint64_t Address, uint64_t NumBytes) const
+{
+  uint64_t Id = (Address >> OFFSET_BITS);
+
+  if (!isAccessValid(Address, NumBytes))
+  {
+    std::cerr << "Memory::dump() invalid access of " << NumBytes
+              << " bytes at address: " << Address << std::endl;
+    return;
+  }
+
+  for (uint64_t i = 0; i < Allocs[Id].NumBytes; i++)
   {
     if (i % 4 == 0)
     {
@@ -228,7 +243,7 @@ void Memory::dump(uint64_t Address) const
                 << ((((uint64_t)Id) << OFFSET_BITS) | i) << ":";
     }
     std::cout << " " << std::hex << std::uppercase << std::setw(2)
-              << std::setfill('0') << (int)Buffers[Id].Data[i];
+              << std::setfill('0') << (int)Allocs[Id].Data[i];
   }
   std::cout << std::endl;
 }
@@ -237,11 +252,11 @@ bool Memory::isAccessValid(uint64_t Address, uint64_t NumBytes) const
 {
   uint64_t Id = (Address >> OFFSET_BITS);
   uint64_t Offset = (Address & (((uint64_t)-1) >> BUFFER_BITS));
-  if (Id >= Buffers.size())
+  if (Id >= Allocs.size())
     return false;
-  if (!Buffers[Id].Data)
+  if (!Allocs[Id].Data)
     return false;
-  if ((Offset + NumBytes) > Buffers[Id].NumBytes)
+  if ((Offset + NumBytes) > Allocs[Id].NumBytes)
     return false;
   return true;
 }
@@ -267,7 +282,7 @@ void Memory::load(uint8_t *Data, uint64_t Address, uint64_t NumBytes) const
     return;
   }
 
-  memcpy(Data, Buffers[Id].Data + Offset, NumBytes);
+  memcpy(Data, Allocs[Id].Data + Offset, NumBytes);
 }
 
 uint8_t *Memory::map(uint64_t Base, uint64_t Offset, uint64_t NumBytes)
@@ -286,7 +301,7 @@ uint8_t *Memory::map(uint64_t Base, uint64_t Offset, uint64_t NumBytes)
     return nullptr;
   }
 
-  return Buffers[Id].Data + Offset;
+  return Allocs[Id].Data + Offset;
 }
 
 void Memory::release(uint64_t Address)
@@ -294,13 +309,13 @@ void Memory::release(uint64_t Address)
   std::lock_guard<std::mutex> Lock(Mutex);
 
   uint64_t Id = (Address >> OFFSET_BITS);
-  assert(Buffers[Id].Data != nullptr);
+  assert(Allocs[Id].Data != nullptr);
 
   // Release memory used by buffer.
-  delete[] Buffers[Id].Data;
-  Buffers[Id].Data = nullptr;
+  delete[] Allocs[Id].Data;
+  Allocs[Id].Data = nullptr;
 
-  FreeBuffers.push_back(Id);
+  FreeList.push_back(Id);
 }
 
 void Memory::store(uint64_t Address, uint64_t NumBytes, const uint8_t *Data)
@@ -320,7 +335,7 @@ void Memory::store(uint64_t Address, uint64_t NumBytes, const uint8_t *Data)
     return;
   }
 
-  memcpy(Buffers[Id].Data + Offset, Data, NumBytes);
+  memcpy(Allocs[Id].Data + Offset, Data, NumBytes);
 }
 
 void Memory::unmap(uint64_t Base) { Dev.reportMemoryUnmap(this, Base); }
@@ -343,7 +358,7 @@ void Memory::copy(uint64_t DstAddress, Memory &DstMem, uint64_t SrcAddress,
     return;
   }
 
-  DstMem.store(DstAddress, NumBytes, SrcMem.Buffers[SrcId].Data + SrcOffset);
+  DstMem.store(DstAddress, NumBytes, SrcMem.Allocs[SrcId].Data + SrcOffset);
 }
 
 // Explicit instantiations for types valid for atomic operations.

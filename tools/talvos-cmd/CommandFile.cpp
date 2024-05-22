@@ -18,6 +18,7 @@
 #include "talvos/ComputePipeline.h"
 #include "talvos/Device.h"
 #include "talvos/Dim3.h"
+#include "talvos/EntryPoint.h"
 #include "talvos/Memory.h"
 #include "talvos/Module.h"
 #include "talvos/Object.h"
@@ -266,6 +267,43 @@ void CommandFile::parseDispatch(Mode mode)
   }
 }
 
+void CommandFile::parseExec(Mode mode)
+{
+  if (!Module)
+    throw "EXEC reached with no prior MODULE command";
+  if (!Entry && !strlen(Params.EntryName))
+    throw "EXEC reached with no prior ENTRY command";
+  else if (strlen(Params.EntryName))
+    if (!(Entry =
+              Module->getEntryPoint(Params.EntryName, EXEC_MODEL_GLCOMPUTE)) &&
+        !(Entry = Module->getEntryPoint(Params.EntryName, EXEC_MODEL_KERNEL)))
+      throw "Bad EntryPoint!";
+
+  talvos::Dim3 GroupCount = Module->getGlobalSize(Entry->getId());
+  talvos::PipelineStage *Stage =
+      new talvos::PipelineStage(*Device, Module, Entry, SpecConstMap);
+
+  CurrentPipeline.emplace(Stage);
+  PC.clear();
+  PC.bindComputePipeline(&*CurrentPipeline);
+  PC.bindComputeDescriptors(DescriptorSets);
+
+  CurrentDispatch = talvos::DispatchCommand(PC, {0, 0, 0}, GroupCount);
+  switch (mode)
+  {
+  case RUN:
+    CurrentDispatch->run(*Device);
+    CurrentDispatch.reset();
+    break;
+  case DEBUG:
+    Device->reportCommandBegin(&*CurrentDispatch);
+    Device->getPipelineExecutor().start(*CurrentDispatch);
+    break;
+  default:
+    throw std::runtime_error("unrecognized mode");
+  }
+}
+
 void CommandFile::parseDump()
 {
   string DumpType = get<string>("dump type");
@@ -479,6 +517,12 @@ bool CommandFile::run(Mode mode)
       else if (Command == "DISPATCH")
       {
         parseDispatch(mode);
+        if (mode == DEBUG)
+          return false;
+      }
+      else if (Command == "EXEC")
+      {
+        parseExec(mode);
         if (mode == DEBUG)
           return false;
       }

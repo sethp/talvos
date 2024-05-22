@@ -22,6 +22,7 @@
 namespace talvos
 {
 
+class Buffer;
 class EntryPoint;
 class Function;
 class Instruction;
@@ -62,6 +63,8 @@ public:
   /// Add a local size execution mode to an entry point.
   void addLocalSize(uint32_t Entry, Dim3 LocalSize);
 
+  void addGlobalSize(uint32_t Entry, Dim3 GlobalSize);
+
   /// Add an object to this module.
   void addObject(uint32_t Id, const Object &Obj);
 
@@ -94,6 +97,10 @@ public:
   /// This will return (1,1,1) if it has not been explicitly set for \p Entry.
   Dim3 getLocalSize(uint32_t Entry) const;
 
+  /// Returns the GlobalSize execution mode for an entry point.
+  /// This will return (0,0,0) if it has not been explicitly set for \p Entry.
+  Dim3 getGlobalSize(uint32_t Entry) const;
+
   /// Returns the object with the specified ID.
   /// \p Id must be valid constant instruction result.
   const Object &getObject(uint32_t Id) const;
@@ -113,6 +120,9 @@ public:
 
   /// Returns the list of module scope variables.
   const VariableList &getVariables() const { return Variables; }
+
+  /// Returns the list of runtime-managed buffers.
+  const std::vector<Buffer> &getBuffers() const { return Buffers; }
 
   /// Returns the ID of the object decorated with WorkgroupSize.
   /// Returns 0 if no object has been decorated with WorkgroupSize.
@@ -148,6 +158,7 @@ public:
   FunctionMap Functions;                 ///< Function mapping.
   std::vector<EntryPoint *> EntryPoints; ///< List of entry points.
   std::map<uint32_t, Dim3> LocalSizes;   ///< LocalSize execution modes.
+  std::map<uint32_t, Dim3> GlobalSizes;  ///< GlobalSize execution modes.
 
   /// Map specialization constant IDs to result IDs.
   std::map<uint32_t, uint32_t> SpecConstants;
@@ -160,6 +171,13 @@ public:
 
   /// Module scope variables.
   VariableList Variables;
+
+  /// Module scoped buffers: a SharedBuffer-like storage class that's allocated
+  /// and managed by the Talvos runtime.
+  ///
+  /// Allows for nearly homogeneous programs, i.e. avoiding a "host" vs "device"
+  /// distinction, without getting too deep into device-side dynamism.
+  std::vector<Buffer> Buffers;
 };
 
 } // namespace talvos

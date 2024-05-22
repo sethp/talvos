@@ -52,6 +52,7 @@ private:
   void parseBuffer();
   void parseDescriptorSet();
   void parseDispatch(Mode);
+  void parseExec(Mode);
   void parseDump();
   void parseEndLoop();
   void parseEntry();

@@ -215,6 +215,11 @@ private:
   void initializeVariables(const DescriptorSetMap &DSM,
                            uint64_t PushConstantAddress);
 
+  /// Initialize buffers.
+  void initializeBuffers(uint64_t PushConstantAddress);
+  /// Finalize variables.
+  void finalizeBuffers();
+
   /// Helper function to build list of pending fragments in a bounding box.
   void buildPendingFragments(const DrawCommandBase &Cmd, int XMinFB, int XMaxFB,
                              int YMinFB, int YMaxFB);

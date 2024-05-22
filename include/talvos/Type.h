@@ -94,6 +94,9 @@ public:
   /// Returns \p true if this is an array type.
   bool isArray() const { return Id == ARRAY; }
 
+  /// Returns \p true if this is a runtime (unsized) array type.
+  bool isRuntimeArray() const { return Id == RUNTIME_ARRAY; }
+
   /// Returns the \p Arrayed flag of an image type.
   bool isArrayedImage() const { return Arrayed; }
 
