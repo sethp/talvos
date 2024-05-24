@@ -1010,9 +1010,9 @@ std::shared_ptr<Module> Module::load(const std::vector<uint8_t> &Bytes)
   }
 
   spvtools::Context SPVContext(target_env);
-  auto result =
-      spvTextToBinary(SPVContext.CContext(), (const char *)Bytes.data(),
-                      NumBytes, &Binary, &Diagnostic);
+  auto result = spvTextToBinaryWithOptions(
+      SPVContext.CContext(), (const char *)Bytes.data(), NumBytes,
+      SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &Binary, &Diagnostic);
   if (Diagnostic)
   {
     spvDiagnosticPrint(Diagnostic);

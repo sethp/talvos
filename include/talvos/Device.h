@@ -108,7 +108,20 @@ private:
 
   /// Condition variable to notify threads waiting on fence signals.
   mutable std::condition_variable FenceSignaled;
+
+#ifdef __EMSCRIPTEN__
+  class StaticABI;
+#endif
 };
+
+#ifdef __EMSCRIPTEN__
+class Device::StaticABI
+{
+  static_assert(sizeof(talvos::Device) == 112);
+  static_assert(offsetof(talvos::Device, GlobalMemory) == 16);
+  static_assert(offsetof(talvos::Device, Executor) == 32);
+};
+#endif
 
 } // namespace talvos
 

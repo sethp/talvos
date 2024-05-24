@@ -26,6 +26,11 @@
 /// Number of bits used for the address offset.
 #define OFFSET_BITS (64 - BUFFER_BITS)
 
+#ifdef __EMSCRIPTEN__
+static_assert(BUFFER_BITS == 16);
+static_assert(OFFSET_BITS == 48);
+#endif
+
 // Macros for locking/unlocking atomic mutexes if necessary.
 #define LOCK_ATOMIC_MUTEX(Address)                                             \
   if (this->Scope == MemoryScope::Device)                                      \
@@ -89,9 +94,8 @@ T Memory::atomic(uint64_t Address, uint32_t Opcode, uint32_t Scope,
   if (!isAccessValid(Address, 4))
   {
     std::stringstream Err;
-    Err << "Invalid atomic access of 4 bytes"
-        << " at address 0x" << std::hex << Address << " ("
-        << scopeToString(this->Scope) << " scope) ";
+    Err << "Invalid atomic access of 4 bytes" << " at address 0x" << std::hex
+        << Address << " (" << scopeToString(this->Scope) << " scope) ";
     Dev.reportError(Err.str());
 
     return 0;
@@ -166,9 +170,8 @@ uint32_t Memory::atomicCmpXchg(uint64_t Address, uint32_t Scope,
                            UnequalSemantics);
 
     std::stringstream Err;
-    Err << "Invalid atomic access of 4 bytes"
-        << " at address 0x" << std::hex << Address << " ("
-        << scopeToString(this->Scope) << " scope) ";
+    Err << "Invalid atomic access of 4 bytes" << " at address 0x" << std::hex
+        << Address << " (" << scopeToString(this->Scope) << " scope) ";
     Dev.reportError(Err.str());
 
     return 0;
@@ -271,9 +274,8 @@ void Memory::load(uint8_t *Data, uint64_t Address, uint64_t NumBytes) const
   if (!isAccessValid(Address, NumBytes))
   {
     std::stringstream Err;
-    Err << "Invalid load of " << NumBytes << " bytes"
-        << " from address 0x" << std::hex << Address << " ("
-        << scopeToString(Scope) << " scope) ";
+    Err << "Invalid load of " << NumBytes << " bytes" << " from address 0x"
+        << std::hex << Address << " (" << scopeToString(Scope) << " scope) ";
     Dev.reportError(Err.str());
 
     // Zero output data to conform to robust buffer access feature.
@@ -294,9 +296,9 @@ uint8_t *Memory::map(uint64_t Base, uint64_t Offset, uint64_t NumBytes)
   if (!isAccessValid(Base + Offset, NumBytes))
   {
     std::stringstream Err;
-    Err << "Invalid mapping of " << NumBytes << " bytes"
-        << " from address 0x" << std::hex << (Base + Offset) << " ("
-        << scopeToString(Scope) << " scope) ";
+    Err << "Invalid mapping of " << NumBytes << " bytes" << " from address 0x"
+        << std::hex << (Base + Offset) << " (" << scopeToString(Scope)
+        << " scope) ";
     Dev.reportError(Err.str());
     return nullptr;
   }
@@ -328,9 +330,8 @@ void Memory::store(uint64_t Address, uint64_t NumBytes, const uint8_t *Data)
   if (!isAccessValid(Address, NumBytes))
   {
     std::stringstream Err;
-    Err << "Invalid store of " << NumBytes << " bytes"
-        << " to address 0x" << std::hex << Address << " ("
-        << scopeToString(Scope) << " scope)";
+    Err << "Invalid store of " << NumBytes << " bytes" << " to address 0x"
+        << std::hex << Address << " (" << scopeToString(Scope) << " scope)";
     Dev.reportError(Err.str());
     return;
   }
@@ -351,9 +352,9 @@ void Memory::copy(uint64_t DstAddress, Memory &DstMem, uint64_t SrcAddress,
   if (!SrcMem.isAccessValid(SrcAddress, NumBytes))
   {
     std::stringstream Err;
-    Err << "Invalid load of " << NumBytes << " bytes"
-        << " from address 0x" << std::hex << SrcAddress << " ("
-        << scopeToString(SrcMem.Scope) << " scope)";
+    Err << "Invalid load of " << NumBytes << " bytes" << " from address 0x"
+        << std::hex << SrcAddress << " (" << scopeToString(SrcMem.Scope)
+        << " scope)";
     SrcMem.Dev.reportError(Err.str());
     return;
   }

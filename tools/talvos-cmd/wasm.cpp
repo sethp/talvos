@@ -1,12 +1,25 @@
 
 #include <cassert>
+#include <emscripten.h>
+
+// Why is this so weirdly high up in the file? Because our test snapshots
+// embed the line numbers, and we're _probably_ not gonna change the three lines
+// above this.
+extern "C"
+{
+  EMSCRIPTEN_KEEPALIVE void assertion()
+  {
+    assert(false && "hello: it's an assertion!");
+  }
+}
+
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <emscripten/em_asm.h>
 #include <emscripten/em_js.h>
-#include <exception>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -16,11 +29,11 @@
 #include <vector>
 
 #include "CommandFile.h"
+#include "talvos/Buffer.h"
 #include "talvos/EntryPoint.h"
 #include "talvos/Module.h"
 #include "talvos/PipelineExecutor.h"
 
-#include <emscripten.h>
 #include <emscripten/console.h>
 
 extern "C"
@@ -113,15 +126,30 @@ public:
       : CmdStream(commands), CF(module, CmdStream){};
 
   void run() { CF.run(); }
+  void dumpBuffers()
+  {
+    // TODO: this is a little spicy (?) because the pipeline's maybe been
+    // reset already after a `run`
+    const auto &Mem = CF.Device->getGlobalMemory();
+    for (auto &B : CF.Module->getBuffers())
+    {
+      uint64_t Addr =
+          CF.Device->getPipelineExecutor().getObject(B.Id).get<uint64_t>();
+      dump(Mem, Addr, B);
+    }
+  }
   ExecutionUniverse start()
   {
     CF.run(CommandFile::DEBUG);
-    // run one step
+    // return makeU(talvos::PipelineExecutor::StepResult::STARTED);
+    // we have to run a step because otherwise the program isn't even loaded
+    // (stepping both schedules and executes work)
     return makeU(step());
   }
 
   talvos::PipelineExecutor::StepResult step(uint64_t StepMask = -1)
   {
+    // std::cout << StepMask << std::endl;
     auto res = CF.Device->getPipelineExecutor().step(StepMask);
     if (res == talvos::PipelineExecutor::FINISHED)
       // run more COMMANDs (e.g. DUMP)
@@ -214,6 +242,7 @@ static_assert(sizeof(talvos::Module) == 128);
 //
 // hm, related:
 static_assert(offsetof(talvos::Module, EntryPoints) == 40);
+static_assert(offsetof(talvos::Module, Buffers) == 116);
 static_assert(sizeof(talvos::Module::EntryPoints) == 12);
 static_assert(sizeof(talvos::EntryPoint) == 36);
 static_assert(offsetof(talvos::EntryPoint, Name) == 4);
@@ -349,7 +378,40 @@ static int __assert_sso = [] {
 
   return 0;
 }();
+} // namespace
 
+namespace
+{
+static_assert(sizeof(size_t) == 4);
+static_assert(sizeof(std::optional<size_t>) == 4 + sizeof(size_t));
+
+static_assert(alignof(char) == 1);
+static_assert(sizeof(std::optional<char>) == 1 + sizeof(char));
+
+static_assert(sizeof(std::optional<std::string>) == 4 + sizeof(std::string));
+
+template <typename T> bool _is_some(std::optional<T> opt)
+{
+  struct mem
+  {
+    unsigned char t[sizeof(T)];
+    unsigned char __engaged_;
+    unsigned char padding[sizeof(opt) - sizeof(T) - 1];
+  };
+  auto M = std::bit_cast<mem>(opt);
+  return M.__engaged_ & 0x01;
+}
+
+static int __assert_optional = [] {
+  std::optional<size_t> none = std::nullopt;
+  std::optional<size_t> some = 1;
+
+  assert(!_is_some(none));
+  assert(_is_some(some));
+  assert(_is_some(std::make_optional<size_t>(0)));
+  assert(_is_some(std::make_optional<size_t>(-1)));
+  return 0;
+}();
 } // namespace
 
 // EM_ASM(alert('hi2'));
@@ -371,16 +433,29 @@ extern "C"
     return new Session(module, commands);
   };
   EMSCRIPTEN_KEEPALIVE void Session__destroy__(Session *self) { delete self; };
+
+  // why do these three C++ side instead of just stepping into the memory? Good
+  // question.
   EMSCRIPTEN_KEEPALIVE struct talvos::Params *Session__params_ref(Session *self)
   {
     return &self->CF.Params;
   };
   EMSCRIPTEN_KEEPALIVE struct talvos::Module *Session__module_ref(Session *self)
   {
+    // this side-steps the "smart" part of the pointer on purpose (but also with
+    // much danger yey)
     return self->CF.Module.get();
+  };
+  EMSCRIPTEN_KEEPALIVE struct talvos::Device *Session__device_ref(Session *self)
+  {
+    return self->CF.Device;
   };
 
   EMSCRIPTEN_KEEPALIVE void Session_run(Session *self) { self->run(); };
+  EMSCRIPTEN_KEEPALIVE void Session_dumpBuffers(Session *self)
+  {
+    self->dumpBuffers();
+  };
   EMSCRIPTEN_KEEPALIVE void Session_start(Session *self, ExecutionUniverse *out)
   {
     assert(out);
@@ -443,6 +518,25 @@ extern "C"
     session.run();
   }
 
+  EMSCRIPTEN_KEEPALIVE void test_entry_no_tcf(const char *module)
+  {
+    Session session(module, "EXEC");
+    strncpy(session.CF.Params.EntryName, "main",
+            sizeof(session.CF.Params.EntryName));
+    session.CF.Params.EntryName[sizeof(session.CF.Params.EntryName) - 1] = '\0';
+    session.CF.run(CommandFile::NO_RESET);
+
+    const auto &Mem = session.CF.Device->getGlobalMemory();
+
+    for (auto &B : session.CF.Module->getBuffers())
+    {
+      uint64_t Addr = session.CF.Device->getPipelineExecutor()
+                          .getObject(B.Id)
+                          .get<uint64_t>();
+      dump(Mem, Addr, B);
+    }
+  }
+
   EMSCRIPTEN_KEEPALIVE Session *run_wasm(const char *module,
                                          const char *commands)
   {
@@ -465,10 +559,5 @@ extern "C"
   EMSCRIPTEN_KEEPALIVE void exception()
   {
     throw std::runtime_error("hello: it's an exception!");
-  }
-
-  EMSCRIPTEN_KEEPALIVE void assertion()
-  {
-    assert(false && "hello: it's an assertion!");
   }
 }

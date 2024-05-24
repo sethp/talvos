@@ -10,6 +10,7 @@
 #define TALVOS_PIPELINEEXECUTOR_H
 
 #include <atomic>
+#include <cassert>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -93,7 +94,8 @@ public:
   enum StepResult : char
   {
     OK,
-    FINISHED
+    FINISHED,
+    STARTED // just started
   };
   /// Run the CurrentCommand one "step"
   /// StepMask is the set of "lanes" to "step", from 0-63 (one per bit)
@@ -161,6 +163,8 @@ public:
 
   SavedLocals pushState();
   void popState(SavedLocals &&);
+
+  const Object &getObject(uint32_t Id) const;
 
 private:
   /// Internal structure to hold the state of a render pipeline.
@@ -341,7 +345,18 @@ public:
   ///@}
 
   bool doSwtch(const Dim3 &Target);
+#ifdef __EMSCRIPTEN__
+  class StaticABI;
+#endif
 };
+
+#ifdef __EMSCRIPTEN__
+class PipelineExecutor::StaticABI
+{
+  static_assert(sizeof(talvos::PipelineExecutor) == 272);
+  static_assert(offsetof(talvos::PipelineExecutor, Objects) == 32);
+};
+#endif
 
 inline bool const operator==(const PipelineExecutor::PhyCoord &lhs,
                              const PipelineExecutor::PhyCoord &rhs)

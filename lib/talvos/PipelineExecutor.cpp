@@ -102,6 +102,12 @@ void PipelineExecutor::popState(SavedLocals &&Saved)
   Breakpoints = Saved.Breakpoints;
 }
 
+const Object &PipelineExecutor::getObject(uint32_t Id) const
+{
+  assert(Id < Objects.size());
+  return Objects[Id];
+}
+
 /// State to be carried through the execution of a render pipeline.
 struct PipelineExecutor::RenderPipelineState
 {
@@ -293,8 +299,14 @@ void PipelineExecutor::start(const talvos::DispatchCommand &Cmd)
         PendingGroups.push_back(
             {BaseGroup.X + GX, BaseGroup.Y + GY, BaseGroup.Z + GZ});
 
-        Assignments[PhyCoord{.Core = NextCore, .Lane = NextLane++}] = {
-            BaseGroup.X + GX, BaseGroup.Y + GY, BaseGroup.Z + GZ};
+        auto Coord = PhyCoord{.Core = NextCore, .Lane = NextLane++};
+
+        Assignments[Coord] = {BaseGroup.X + GX, BaseGroup.Y + GY,
+                              BaseGroup.Z + GZ};
+        // TODO this is a little weird; kinda true, but a little weird
+        // TODO we really want to tease apart the program load from the program
+        // "step"
+        Lanes[Coord] = LaneState::AtBreakpoint;
 
         if (NextLane >= Dev.Lanes)
           NextCore++, NextLane = 0;
@@ -326,7 +338,9 @@ void PipelineExecutor::stop()
   Memory &GlobalMem = Dev.getGlobalMemory();
   finalizeVariables(PC->getComputeDescriptors());
   // finalizeVariables(PC->getGraphicsDescriptors()); // TODO ?
-  finalizeBuffers();
+
+  // TODO we can't clean these up yet if we want to dump them
+  // finalizeBuffers();
   GlobalMem.release(*PushConstantAddress);
   PushConstantAddress.reset();
 
@@ -451,6 +465,9 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
 // TODO the other kind of pipeline/worker deal (graphics)
 PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
 {
+  // TODO:
+  // if (StepMask == 0) return
+
   // TODO use `std::find_if`? and/or a vec<pair> instead of a map?
   for (const auto &[phyCoord, logCoord] : Assignments)
   {
@@ -1736,127 +1753,6 @@ void PipelineExecutor::initializeBuffers(uint64_t PushConstantAddress)
   }
 }
 
-template <typename T>
-void dump(const Memory &Mem, uint64_t BaseAddr, const std::string &Name,
-          size_t NumBytes, unsigned VecWidth = 1)
-{
-  for (uint64_t i = 0; i < NumBytes / sizeof(T); i += VecWidth)
-  {
-    std::cout << "  " << Name << "[" << (i / VecWidth) << "] = ";
-
-    if (VecWidth > 1)
-      std::cout << "(";
-    for (unsigned v = 0; v < VecWidth; v++)
-    {
-      if (v > 0)
-        std::cout << ", ";
-
-      if (i + v >= NumBytes / sizeof(T))
-        break;
-
-      T Value;
-      Mem.load((uint8_t *)&Value, BaseAddr + (i + v) * sizeof(T), sizeof(T));
-      std::cout << Value;
-    }
-    if (VecWidth > 1)
-      std::cout << ")";
-
-    std::cout << std::endl;
-  }
-}
-
-void dump(const Memory &Mem, uint64_t BaseAddr, const Buffer &B)
-{
-  assert(B.Ty->isPointer());
-  Type const *ElemTy = B.Ty->getElementType();
-  // TODO[seth]: better handling for vectors, pointers to structs, etc
-  while (ElemTy->isArray() || ElemTy->isRuntimeArray())
-    ElemTy = ElemTy->getElementType();
-
-  const auto &Name = B.Name.value_or("<unnamed buffer>");
-  const size_t NumBytes = B.Size;
-
-  std::cout << std::endl << "Buffer '" << Name << "'";
-  if (!B.Name)
-    std::cout << "@0x" << std::hex << BaseAddr << std::dec;
-  std::cout << " (" << NumBytes << " bytes):" << std::endl;
-
-  switch (ElemTy->getTypeId())
-  {
-  case Type::VOID:
-    // TODO[seth]: untested (if this is even possible)
-    Mem.dump(BaseAddr, NumBytes);
-    break;
-  case Type::INT:
-  {
-    const auto BW = ElemTy->getBitWidth();
-    // TODO signed-ness
-    if (false)
-    {
-      if (BW == 8)
-        dump<uint8_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 16)
-        dump<uint16_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 32)
-        dump<uint32_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 64)
-        dump<uint64_t>(Mem, BaseAddr, Name, NumBytes);
-      else
-        goto err;
-    }
-    else
-    {
-      if (BW == 8)
-        dump<int8_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 16)
-        dump<int16_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 32)
-        dump<int32_t>(Mem, BaseAddr, Name, NumBytes);
-      else if (BW == 64)
-        dump<int64_t>(Mem, BaseAddr, Name, NumBytes);
-      else
-        goto err;
-    }
-    break;
-  err:
-    std::cerr << "cannot dump integer: unhandled bit width: " << BW
-              << std::endl;
-  }
-  break;
-
-  case Type::FLOAT:
-  {
-    const auto BW = ElemTy->getBitWidth();
-
-    if (BW == 32)
-      dump<float>(Mem, BaseAddr, Name, NumBytes);
-    else if (BW == 64)
-      dump<double>(Mem, BaseAddr, Name, NumBytes);
-    else
-      std::cerr << "cannot dump float: unhandled bit width: " << BW
-                << std::endl;
-  }
-  break;
-
-  case Type::POINTER:
-  case Type::BOOL:
-  case Type::VECTOR:
-  case Type::MATRIX:
-  case Type::IMAGE:
-  case Type::SAMPLER:
-  case Type::SAMPLED_IMAGE:
-  case Type::STRUCT:
-  case Type::FUNCTION:
-    std::cerr << "cannot dump: unhandled type: " << B.Ty;
-    break;
-
-  case Type::ARRAY:
-  case Type::RUNTIME_ARRAY:
-  default:
-    __builtin_unreachable();
-  }
-}
-
 void PipelineExecutor::finalizeBuffers()
 {
   for (auto &B : CurrentStage->getModule()->getBuffers())
@@ -1864,9 +1760,7 @@ void PipelineExecutor::finalizeBuffers()
     if (B.StorageClass == SpvStorageClassPushConstant)
       continue;
 
-    // TODO[seth]: move the dump somewhere else (?)
     uint64_t Addr = Objects[B.Id].get<uint64_t>();
-    dump(Dev.getGlobalMemory(), Addr, B);
     Dev.getGlobalMemory().release(Addr);
   }
 }

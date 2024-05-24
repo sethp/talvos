@@ -36,7 +36,8 @@ public:
   enum Mode
   {
     RUN,
-    DEBUG
+    DEBUG,
+    NO_RESET
   };
 
   CommandFile(const char *module, std::istream &CmdStream);

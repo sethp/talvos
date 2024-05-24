@@ -138,7 +138,23 @@ private:
 
   /// Check whether an access resides in an allocated region of memory.
   bool isAccessValid(uint64_t Address, uint64_t NumBytes) const;
+#ifdef __EMSCRIPTEN__
+  class StaticABI;
+#endif
 };
+
+#ifdef __EMSCRIPTEN__
+class Memory::StaticABI
+{
+  static_assert(sizeof(talvos::Memory) == 2456);
+  static_assert(offsetof(talvos::Memory, Allocs) == 2432);
+  // static_assert(offsetof(talvos::Memory, ...) == 3);
+
+  static_assert(sizeof(talvos::Memory::Alloc) == 16);
+  static_assert(offsetof(talvos::Memory::Alloc, NumBytes) == 0);
+  static_assert(offsetof(talvos::Memory::Alloc, Data) == 8);
+};
+#endif
 
 } // namespace talvos
 

@@ -61,8 +61,8 @@ include(CheckIncludeFileCXX)
 # Enable rpath on OS X
 set(CMAKE_MACOSX_RPATH 1)
 
-# Require and enable C++17 support, and disable compiler extensions.
-set(CMAKE_CXX_STANDARD 17)
+# Require and enable C++20 support, and disable compiler extensions.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

@@ -291,9 +291,11 @@ void CommandFile::parseExec(Mode mode)
   CurrentDispatch = talvos::DispatchCommand(PC, {0, 0, 0}, GroupCount);
   switch (mode)
   {
+  case NO_RESET:
   case RUN:
     CurrentDispatch->run(*Device);
-    CurrentDispatch.reset();
+    if (mode != NO_RESET)
+      CurrentDispatch.reset();
     break;
   case DEBUG:
     Device->reportCommandBegin(&*CurrentDispatch);

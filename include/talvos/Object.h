@@ -149,8 +149,18 @@ private:
   /// Descriptor array element information.
   /// Only valid for objects that are pointers to descriptor arrays.
   const DescriptorElement *DescriptorElements = nullptr;
+#ifdef __EMSCRIPTEN__
+  class StaticABI;
+#endif
 };
 
+#ifdef __EMSCRIPTEN__
+class Object::StaticABI
+{
+  static_assert(sizeof(talvos::Object) == 20);
+  static_assert(offsetof(talvos::Object, Data) == 4);
+};
+#endif
 } // namespace talvos
 
 #endif

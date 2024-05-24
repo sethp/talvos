@@ -17,8 +17,8 @@ find_library(SPIRV-Tools_LIBRARIES SPIRV-Tools)
 endif()
 
 if (NOT SPIRV-Tools_LIBRARIES)
-	# message(STATUS "searching for SPIRV-Tools library in  ${SPIRV-Tools_LIBRARY_DIR}")
-	find_library(SPIRV-Tools_LIBRARIES SPIRV-Tools PATHS "${SPIRV-Tools_LIBRARY_DIR}")
+  # message(STATUS "searching for SPIRV-Tools library in  ${SPIRV-Tools_LIBRARY_DIR}")
+  find_library(SPIRV-Tools_LIBRARIES SPIRV-Tools PATHS "${SPIRV-Tools_LIBRARY_DIR}")
 endif()
 message(STATUS "SPIRV-Tools library: ${SPIRV-Tools_LIBRARIES}")
 
@@ -77,6 +77,7 @@ set(TALVOS_HEADERS
     ${PROJECT_SOURCE_DIR}/include/talvos/Workgroup.h)
 set(TALVOS_SOURCES
     Block.cpp
+    Buffer.cpp
     Commands.cpp
     ComputePipeline.cpp
     Device.cpp
