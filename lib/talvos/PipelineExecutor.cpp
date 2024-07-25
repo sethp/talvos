@@ -13,11 +13,14 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <queue>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -68,9 +71,11 @@ namespace talvos
 using LaneState = PipelineExecutor::LaneState;
 using PhyCoord = PipelineExecutor::PhyCoord;
 using LogCoord = PipelineExecutor::LogCoord;
+using Core = PipelineExecutor::Core;
 
 std::map<PhyCoord, LaneState> PipelineExecutor::Lanes;
 std::map<PhyCoord, LogCoord> PipelineExecutor::Assignments;
+std::vector<Core> PipelineExecutor::Cores;
 
 static thread_local uint64_t ActiveLaneMask;
 
@@ -82,19 +87,31 @@ static thread_local bool IsWorkerThread = false;
 static thread_local Workgroup *CurrentGroup;
 static thread_local Invocation *CurrentInvocation;
 
+// TODO: push/pop state for these
+// static std::vector<std::queue<std::function<void()>>> CurrentMicrotasks;
+// static thread_local std::vector<Instruction *> CorePCs;
+
 uint32_t PipelineExecutor::NextBreakpoint = 1;
 std::map<uint32_t, uint32_t> PipelineExecutor::Breakpoints;
 
 PipelineExecutor::SavedLocals PipelineExecutor::pushState()
 {
-  return {Lanes,        Assignments,       ActiveLaneMask, IsWorkerThread,
-          CurrentGroup, CurrentInvocation, NextBreakpoint, Breakpoints};
+  return {Lanes,
+          Assignments,
+          Cores,
+          ActiveLaneMask,
+          IsWorkerThread,
+          CurrentGroup,
+          CurrentInvocation,
+          NextBreakpoint,
+          Breakpoints};
 }
 
 void PipelineExecutor::popState(SavedLocals &&Saved)
 {
   Lanes = Saved.Lanes;
   Assignments = Saved.Assignments;
+  Cores = Saved.Cores;
   ActiveLaneMask = Saved.ActiveLaneMask;
   CurrentGroup = Saved.CurrentGroup;
   CurrentInvocation = Saved.CurrentInvocation;
@@ -106,6 +123,12 @@ const Object &PipelineExecutor::getObject(uint32_t Id) const
 {
   assert(Id < Objects.size());
   return Objects[Id];
+}
+
+const Dim3 PipelineExecutor::getCurrentId() const
+{
+  assert(CurrentInvocation);
+  return CurrentInvocation->getGlobalId();
 }
 
 /// State to be carried through the execution of a render pipeline.
@@ -288,6 +311,9 @@ void PipelineExecutor::start(const talvos::DispatchCommand &Cmd)
       Lanes[PhyCoord{Core, Lane}] = LaneState::NotLaunched;
 
   Assignments.clear();
+  Cores.clear();
+  for (int i = 0; i < Dev.Cores; ++i)
+    Cores.emplace_back();
   uint8_t NextCore = 0, NextLane = 0;
 
   // Build list of pending group IDs.
@@ -462,13 +488,148 @@ void PipelineExecutor::run(const talvos::DrawCommandBase &Cmd)
   stop();
 }
 
+PipelineExecutor::TickResult
+PipelineExecutor::tickModel(const uint64_t StepMask)
+{
+  auto ret = NoMoreMicrotasks;
+  for (auto &C : Cores)
+  {
+    if (!C.Microtasks.empty())
+    {
+      C.Microtasks.front()(StepMask);
+      C.Microtasks.pop();
+    }
+
+    if (!C.Microtasks.empty())
+      ret = HasMoreMicrotasks;
+  }
+  return ret;
+}
+
+void PipelineExecutor::doPrepareTick()
+{
+  enum OpType
+  {
+    Unknown,
+    MemoryOp,
+    LocalOp,
+  };
+
+  const auto classify = [](const Instruction *I) {
+    switch (I->getOpcode())
+    {
+    case SpvOpLoad:
+    case SpvOpStore:
+      // Loads and stores are definitely memory accesses
+      return MemoryOp;
+    case SpvOpAccessChain:
+      // Computing an address from a base and some offsets is an ALU-local
+      // operation
+      return LocalOp;
+    default:
+      return Unknown;
+    }
+  };
+
+  // gather enough work to step every active core a single time
+  int Core = 0;
+  for (auto &C : Cores)
+  {
+    const auto CoreMask = ~(-1ul << Dev.Lanes) << (Core * Dev.Lanes);
+
+    auto &PC = C.PC;
+    const auto OpTy = classify(PC);
+    if (OpTy == LocalOp || OpTy == Unknown)
+      C.Microtasks.push([this, CoreMask, &PC](const uint64_t StepMask) {
+        const auto Mask = StepMask & CoreMask;
+
+        // TODO this is starting to smell like we want a different
+        // structure here; something like cores & PCs, perhaps?
+        for (const auto &[phyCoord, logCoord] : Assignments)
+        {
+          const auto LaneBit =
+              (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane));
+          if (Mask & LaneBit)
+          {
+            doSwtch(logCoord);
+            if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
+              continue;
+
+            // TODO this blows up when we do sub-dispatches
+            // assert(PC == CurrentInvocation->getCurrentInstruction());
+            stepComputeWorker();
+          }
+          else if (CoreMask & LaneBit)
+          {
+            // we stepped the core, but not this particular lane
+            // TODO: still advance the Invocation's PC ? (what if we need the
+            // value, later?)
+          }
+        }
+
+        if (CurrentInvocation)
+          PC = CurrentInvocation->getCurrentInstruction();
+      });
+    else if (OpTy == MemoryOp)
+    {
+      // push in the tasks necessary to fulfill the slot
+      // something something structural hazards and stalls?
+      // TODO chunked by Dev.MemoryBandwidth or similar
+      for (const auto &[phyCoord, logCoord] : Assignments)
+      {
+        if (phyCoord.Core != Core)
+          continue;
+
+        // TODO ok so here's where we're a little tricksy/stuck
+        // we need to emit a microtask just in case there's actual work to do
+        // do we _also_ take a mask for prepare ?
+        C.Microtasks.push(
+            [this, CoreMask, logCoord, phyCoord, &PC](const uint64_t StepMask) {
+              const auto Mask = StepMask & CoreMask;
+
+              const auto LaneBit =
+                  (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane));
+              if (Mask & LaneBit)
+              {
+                doSwtch(logCoord);
+                if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
+                  return;
+
+                // TODO this blows up when we do sub-dispatches
+                // assert(PC == CurrentInvocation->getCurrentInstruction());
+                stepComputeWorker();
+              }
+            });
+      }
+    }
+    else
+      __builtin_unreachable();
+
+    Core++;
+  }
+}
+
 // TODO the other kind of pipeline/worker deal (graphics)
 PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
 {
   // TODO:
-  // if (StepMask == 0) return
+  // if (StepMask == 0) return ... what?
 
-  // TODO use `std::find_if`? and/or a vec<pair> instead of a map?
+  // TODO: isn't this, like, an invalid state?
+  // if we're all ticked out
+  if (std::find_if(Cores.begin(), Cores.end(), [](const auto &C) {
+        return !C.Microtasks.empty();
+      }) >= Cores.end())
+    doPrepareTick();
+
+  // run forward "enough" ticks
+  while (tickModel(StepMask) == HasMoreMicrotasks)
+    ;
+
+  // Prepare the next tick
+  doPrepareTick();
+
+  // collect some states
   for (const auto &[phyCoord, logCoord] : Assignments)
   {
     if (StepMask & (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane)))
@@ -476,7 +637,6 @@ PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
       doSwtch(logCoord);
       if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
         continue;
-      stepComputeWorker();
 
 #define TODO false
       if (!CurrentInvocation ||
@@ -609,6 +769,14 @@ void PipelineExecutor::startComputeWorker()
   IsWorkerThread = true;
   CurrentGroup = nullptr;
   CurrentInvocation = nullptr;
+
+  for (const auto &[phyCoord, logCoord] : Assignments)
+  {
+    doSwtch(logCoord);
+    auto &PC = Cores[phyCoord.Core].PC;
+    assert(!PC || PC == CurrentInvocation->getCurrentInstruction());
+    PC = CurrentInvocation->getCurrentInstruction();
+  }
 }
 
 void PipelineExecutor::runComputeWorker()

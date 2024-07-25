@@ -16,10 +16,12 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <queue>
 #include <thread>
 #include <vector>
 
 #include "talvos/Dim3.h"
+#include "talvos/Instruction.h"
 #include "talvos/PipelineContext.h"
 
 namespace talvos
@@ -52,6 +54,14 @@ struct Vec4
 {
   float X, Y, Z, W;
 };
+
+namespace Tick
+{
+enum Result : char
+{
+  OK,
+};
+}
 
 /// An internal class that handles pipeline execution, including the interactive
 /// debugger.
@@ -146,10 +156,18 @@ public:
   static std::map<PhyCoord, LaneState> Lanes; // this is a view
   static std::map<PhyCoord, LogCoord> Assignments;
 
+  struct Core
+  {
+    const Instruction *PC = nullptr;
+    std::queue<std::function<void(const uint64_t)>> Microtasks;
+  };
+  static std::vector<Core> Cores;
+
   struct SavedLocals
   {
     decltype(Lanes) Lanes;
     decltype(Assignments) Assignments;
+    decltype(Cores) Cores;
 
     uint64_t ActiveLaneMask;
 
@@ -165,6 +183,7 @@ public:
   void popState(SavedLocals &&);
 
   const Object &getObject(uint32_t Id) const;
+  const Dim3 getCurrentId() const;
 
 private:
   /// Internal structure to hold the state of a render pipeline.
@@ -345,6 +364,15 @@ public:
   ///@}
 
   bool doSwtch(const Dim3 &Target);
+
+  enum TickResult : char
+  {
+    NoMoreMicrotasks,
+    HasMoreMicrotasks,
+  };
+
+  TickResult tickModel(const uint64_t StepMask);
+  void doPrepareTick();
 #ifdef __EMSCRIPTEN__
   class StaticABI;
 #endif

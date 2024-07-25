@@ -65,7 +65,21 @@ public:
   /// Allow a Dim3 to be inserted into an output stream.
   /// Produces the output "(X,Y,Z)".
   friend std::ostream &operator<<(std::ostream &Stream, const Dim3 &D);
+#ifdef __EMSCRIPTEN__
+  class StaticABI;
+#endif
 };
+
+#ifdef __EMSCRIPTEN__
+class Dim3::StaticABI
+{
+  static_assert(sizeof(talvos::Dim3) == 12);
+  static_assert(offsetof(talvos::Dim3, Data) == 0);
+  static_assert(offsetof(talvos::Dim3, X) == 0);
+  static_assert(offsetof(talvos::Dim3, Y) == 4);
+  static_assert(offsetof(talvos::Dim3, Z) == 8);
+};
+#endif
 
 } // namespace talvos
 

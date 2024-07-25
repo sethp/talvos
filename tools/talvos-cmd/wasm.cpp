@@ -158,6 +158,15 @@ public:
     return res;
   }
 
+  talvos::Tick::Result tick()
+  {
+    if (CF.Device->getPipelineExecutor().tickModel(-1) ==
+        talvos::PipelineExecutor::NoMoreMicrotasks)
+      CF.Device->getPipelineExecutor().doPrepareTick();
+
+    return talvos::Tick::OK;
+  }
+
   talvos::PipelineExecutor::StepResult cont()
   {
     // since we don't support breakpoints yet...
@@ -462,9 +471,37 @@ extern "C"
 
     *out = self->start();
   };
+
+  // OK, these next two are a model violation, because they only make sense in a
+  // world where either:
+  // 1. All cores & lanes move forward in perfect lock-step, such that asking
+  // any "point" in the work-group-space what it's going to do next will always
+  // yield the same answer
+  // 2. We're actually secretly a work-item-focused implementation and we have a
+  // thread-local that holds a pointer to the thing we were most recently
+  // looking at
+  //
+  // Both used to be true until we introduced `tick`, and now only the second
+  // one is true, but it's accidental. It's convenient for now, but really what
+  // we'd like to turn the ratchet one "step" closer to reality where each core
+  // independently tracks its current instruction, and each lane completes that
+  // instruction independently (i.e. we're explicitly ignoring pipelining, at
+  // least for now).
+  //
+  // But, we don't have a good way to represent that model & its correspondence
+  // to the source-level view, so we leave these in place per "something beats
+  // nothing"
+
+  // TODO: model violation (see above)
   EMSCRIPTEN_KEEPALIVE void Session_printContext(Session *self)
   {
     self->printContext();
+  };
+  // TODO: model violation (see above)
+  EMSCRIPTEN_KEEPALIVE void Session_getCurrentId(Session *self,
+                                                 talvos::Dim3 *out)
+  {
+    *out = self->CF.Device->getPipelineExecutor().getCurrentId();
   };
 
   // interactions
@@ -477,6 +514,12 @@ extern "C"
     auto ret = self->step(*laneMask);
     *out = self->makeU(ret, *laneMask);
     return ret;
+  }
+  EMSCRIPTEN_KEEPALIVE talvos::Tick::Result Session_tick(Session *self)
+  {
+    // assert(laneMask);
+
+    return self->tick();
   }
   EMSCRIPTEN_KEEPALIVE void Session_continue(Session *self,
                                              ExecutionUniverse *out)
