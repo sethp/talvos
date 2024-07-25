@@ -115,12 +115,15 @@ private:
 };
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
 class Device::StaticABI
 {
   static_assert(sizeof(talvos::Device) == 112);
   static_assert(offsetof(talvos::Device, GlobalMemory) == 16);
   static_assert(offsetof(talvos::Device, Executor) == 32);
 };
+#pragma clang diagnostic pop
 #endif
 
 } // namespace talvos

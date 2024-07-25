@@ -155,11 +155,14 @@ private:
 };
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
 class Object::StaticABI
 {
   static_assert(sizeof(talvos::Object) == 20);
   static_assert(offsetof(talvos::Object, Data) == 4);
 };
+#pragma clang diagnostic pop
 #endif
 } // namespace talvos
 

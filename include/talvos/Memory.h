@@ -144,6 +144,8 @@ private:
 };
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
 class Memory::StaticABI
 {
   static_assert(sizeof(talvos::Memory) == 2456);
@@ -154,6 +156,7 @@ class Memory::StaticABI
   static_assert(offsetof(talvos::Memory::Alloc, NumBytes) == 0);
   static_assert(offsetof(talvos::Memory::Alloc, Data) == 8);
 };
+#pragma clang diagnostic pop
 #endif
 
 } // namespace talvos

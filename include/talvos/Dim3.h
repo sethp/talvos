@@ -71,6 +71,8 @@ public:
 };
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
 class Dim3::StaticABI
 {
   static_assert(sizeof(talvos::Dim3) == 12);
@@ -79,6 +81,7 @@ class Dim3::StaticABI
   static_assert(offsetof(talvos::Dim3, Y) == 4);
   static_assert(offsetof(talvos::Dim3, Z) == 8);
 };
+#pragma clang diagnostic pop
 #endif
 
 } // namespace talvos

@@ -107,6 +107,7 @@ public:
     FINISHED,
     STARTED // just started
   };
+
   /// Run the CurrentCommand one "step"
   /// StepMask is the set of "lanes" to "step", from 0-63 (one per bit)
   StepResult step(uint64_t StepMask = -1);
@@ -379,11 +380,14 @@ public:
 };
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
 class PipelineExecutor::StaticABI
 {
   static_assert(sizeof(talvos::PipelineExecutor) == 272);
   static_assert(offsetof(talvos::PipelineExecutor, Objects) == 32);
 };
+#pragma clang diagnostic pop
 #endif
 
 inline bool const operator==(const PipelineExecutor::PhyCoord &lhs,
