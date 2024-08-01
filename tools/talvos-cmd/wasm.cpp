@@ -162,7 +162,7 @@ public:
   {
     if (CF.Device->getPipelineExecutor().tickModel(-1) ==
         talvos::PipelineExecutor::NoMoreMicrotasks)
-      CF.Device->getPipelineExecutor().doPrepareTick();
+      return CF.Device->getPipelineExecutor().doPrepareTick();
 
     return talvos::Tick::OK;
   }

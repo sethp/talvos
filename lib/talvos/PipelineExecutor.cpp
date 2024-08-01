@@ -506,7 +506,7 @@ PipelineExecutor::tickModel(const uint64_t StepMask)
   return ret;
 }
 
-void PipelineExecutor::doPrepareTick()
+Tick::Result PipelineExecutor::doPrepareTick()
 {
   enum OpType
   {
@@ -516,6 +516,7 @@ void PipelineExecutor::doPrepareTick()
   };
 
   const auto classify = [](const Instruction *I) {
+    assert(I);
     switch (I->getOpcode())
     {
     case SpvOpLoad:
@@ -533,11 +534,18 @@ void PipelineExecutor::doPrepareTick()
 
   // gather enough work to step every active core a single time
   int Core = 0;
+  bool AllDone = true;
   for (auto &C : Cores)
   {
     const auto CoreMask = ~(-1ul << Dev.Lanes) << (Core * Dev.Lanes);
 
     auto &PC = C.PC;
+    if (!PC)
+    {
+      Core++;
+      continue;
+    }
+    const auto &Tasks = C.Microtasks;
     const auto OpTy = classify(PC);
     if (OpTy == LocalOp || OpTy == Unknown)
       C.Microtasks.push([this, CoreMask, &PC](const uint64_t StepMask) {
@@ -583,30 +591,41 @@ void PipelineExecutor::doPrepareTick()
         // TODO ok so here's where we're a little tricksy/stuck
         // we need to emit a microtask just in case there's actual work to do
         // do we _also_ take a mask for prepare ?
-        C.Microtasks.push(
-            [this, CoreMask, logCoord, phyCoord, &PC](const uint64_t StepMask) {
-              const auto Mask = StepMask & CoreMask;
+        // hmm, so we're basically modeling a per-lane "stall," but it's
+        // backwards. what is a tick?
+        //    each core gets a chance to do as much work as it can
+        //    how to track memory bandwidth? stock-and-flow?
+        C.Microtasks.push([this, CoreMask, logCoord, phyCoord, &PC,
+                           &Tasks](const uint64_t StepMask) {
+          const auto Mask = StepMask & CoreMask;
 
-              const auto LaneBit =
-                  (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane));
-              if (Mask & LaneBit)
-              {
-                doSwtch(logCoord);
-                if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
-                  return;
+          const auto LaneBit =
+              (1 << (phyCoord.Core * Dev.Lanes + phyCoord.Lane));
+          if (Mask & LaneBit)
+          {
+            doSwtch(logCoord);
+            if (!CurrentInvocation && Lanes[phyCoord] == LaneState::Exited)
+              return;
 
-                // TODO this blows up when we do sub-dispatches
-                // assert(PC == CurrentInvocation->getCurrentInstruction());
-                stepComputeWorker();
-              }
-            });
+            // TODO this blows up when we do sub-dispatches
+            // assert(PC == CurrentInvocation->getCurrentInstruction());
+            stepComputeWorker();
+
+            // if we're the last task, update PC
+            if (Tasks.size() == 1)
+              PC = CurrentInvocation->getCurrentInstruction();
+          }
+        });
       }
     }
     else
       __builtin_unreachable();
 
     Core++;
+    AllDone = false;
   }
+
+  return AllDone ? Tick::Result::Done : Tick::Result::OK;
 }
 
 // TODO the other kind of pipeline/worker deal (graphics)
@@ -620,14 +639,16 @@ PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
   if (std::find_if(Cores.begin(), Cores.end(), [](const auto &C) {
         return !C.Microtasks.empty();
       }) >= Cores.end())
-    doPrepareTick();
+    if (doPrepareTick() == Tick::Result::Done)
+      return FINISHED;
 
   // run forward "enough" ticks
   while (tickModel(StepMask) == HasMoreMicrotasks)
     ;
 
   // Prepare the next tick
-  doPrepareTick();
+  if (doPrepareTick() == Tick::Result::Done)
+    return FINISHED;
 
   // collect some states
   for (const auto &[phyCoord, logCoord] : Assignments)
@@ -663,8 +684,10 @@ PipelineExecutor::StepResult PipelineExecutor::step(uint64_t StepMask)
   }
 
   // TODO tie this to the states map instead?
-  if (CurrentInvocation == nullptr && CurrentGroup == nullptr &&
-      RunningGroups.empty() && NextWorkIndex >= PendingGroups.size())
+  if ((CurrentInvocation == nullptr ||
+       CurrentInvocation->getState() == Invocation::FINISHED) &&
+      /* CurrentGroup == nullptr && */ RunningGroups.empty() &&
+      NextWorkIndex >= PendingGroups.size())
     return FINISHED;
 
   assert(CurrentInvocation);

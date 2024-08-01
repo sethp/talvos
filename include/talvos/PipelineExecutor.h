@@ -60,6 +60,7 @@ namespace Tick
 enum Result : char
 {
   OK,
+  Done,
 };
 }
 
@@ -372,8 +373,9 @@ public:
     HasMoreMicrotasks,
   };
 
+  // TODO lol
   TickResult tickModel(const uint64_t StepMask);
-  void doPrepareTick();
+  Tick::Result doPrepareTick();
 #ifdef __EMSCRIPTEN__
   class StaticABI;
 #endif
